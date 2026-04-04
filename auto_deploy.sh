@@ -16,8 +16,8 @@ git pull origin main 2>&1 | tee -a "$LOG"
 
 # 2. Rebuild scanner
 echo -e "${YELLOW}Rebuilding scanner...${NC}" | tee -a "$LOG"
-docker compose build nsfw_scanner 2>&1 | tail -3 | tee -a "$LOG"
-docker compose up -d nsfw_scanner 2>&1 | tee -a "$LOG"
+docker compose build safeeye 2>&1 | tail -3 | tee -a "$LOG"
+docker compose up -d safeeye 2>&1 | tee -a "$LOG"
 
 # 3. Sync demo site
 DEMO_DIR="/var/www/lhflow_site/SafeEye"
