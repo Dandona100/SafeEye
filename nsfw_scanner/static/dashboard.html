@@ -1,0 +1,1948 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<script>(function(){ var t=localStorage.getItem('scanner_theme')||'light'; document.documentElement.setAttribute('data-theme',t); })()</script>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeEye Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#FAF9F7', warm: '#F5F3F0', gold: { DEFAULT: '#C9A962', dark: '#A68B4B', light: '#E0D5B8' },
+                        ink: '#1A1A1A', body: '#4A4A4A', muted: '#7A7A7A', line: '#E5E2DD',
+                    }
+                }
+            }
+        };
+    </script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        body { background: #FAF9F7; color: #4A4A4A; font-family: 'Heebo', 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        h1, h2, h3, .font-display { font-family: 'Playfair Display', Georgia, serif; }
+        .card { background: #FFFFFF; border: 1px solid #E5E2DD; border-radius: 12px; transition: all 0.25s cubic-bezier(0.4,0,0.2,1); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .card-expand { background: #FFFFFF; border: 1px solid #C9A962; border-radius: 12px; box-shadow: 0 4px 20px rgba(201,169,98,0.15); }
+        .badge-nsfw { background: #C0392B; } .badge-safe { background: #2D8A56; } .badge-borderline { background: #D4A017; }
+        .tab-active { border-bottom: 2px solid #C9A962; color: #A68B4B; }
+        .clickable { cursor: pointer; } .clickable:hover { border-color: #C9A962; }
+        .detail-row { display: grid; grid-template-columns: 120px 1fr; gap: 6px; padding: 4px 0; direction: ltr; text-align: left; }
+        @media (min-width: 640px) { .detail-row { grid-template-columns: 140px 1fr; } }
+        .detail-label { color: #7A7A7A; font-size: 0.8rem; } .detail-value { font-size: 0.85rem; color: #1A1A1A; }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .input { width: 100%; padding: 10px 14px; background: #FAF9F7; border: 1px solid #E5E2DD; border-radius: 8px; color: #1A1A1A; font-size: 0.9rem; font-family: 'Heebo', sans-serif; transition: border-color 0.2s; }
+        .input:focus { outline: none; border-color: #C9A962; box-shadow: 0 0 0 3px rgba(201,169,98,0.15); }
+        .btn { padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s cubic-bezier(0.4,0,0.2,1); font-family: 'Heebo', sans-serif; border: none; }
+        .btn-blue { background: #C9A962; color: white; box-shadow: 0 2px 10px rgba(201,169,98,0.3); } .btn-blue:hover { background: #A68B4B; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201,169,98,0.4); }
+        .btn-red { background: #C0392B; color: white; } .btn-red:hover { background: #96281B; }
+        .btn-green { background: #2D8A56; color: white; } .btn-green:hover { background: #236B44; }
+        .btn-gray { background: #F5F3F0; color: #4A4A4A; border: 1px solid #E5E2DD; } .btn-gray:hover { border-color: #C9A962; background: white; }
+        textarea.input { min-height: 80px; resize: vertical; }
+        /* Layout shell always LTR (logo left, logout right, tabs left-to-right) */
+        .shell-ltr { direction: ltr !important; text-align: left; }
+        /* Content area follows language */
+        .content-bidi[data-dir="rtl"] { direction: rtl; text-align: right; }
+        .content-bidi[data-dir="ltr"] { direction: ltr; text-align: left; }
+        /* Code/pre/mono always LTR */
+        code, pre, .font-mono { direction: ltr !important; unicode-bidi: isolate; text-align: left !important; }
+        /* Inputs with dir="ltr" stay left-aligned */
+        input[dir="ltr"] { text-align: left !important; direction: ltr !important; }
+        /* Center overrides */
+        .text-center { text-align: center !important; }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #E5E2DD; border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: #C9A962; }
+        /* Dark mode */
+        [data-theme="dark"] body { background: #1A1A1A !important; color: #E0DDD8 !important; }
+        [data-theme="dark"] .card { background: #252525 !important; border-color: #333 !important; }
+        [data-theme="dark"] .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important; }
+        [data-theme="dark"] .input { background: #1A1A1A !important; border-color: #333 !important; color: #E0DDD8 !important; }
+        [data-theme="dark"] .btn-gray { background: #333 !important; color: #E0DDD8 !important; border-color: #444 !important; }
+        [data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3, [data-theme="dark"] h4 { color: #E0DDD8 !important; }
+        [data-theme="dark"] .text-ink { color: #E0DDD8 !important; }
+        [data-theme="dark"] .text-muted { color: #999 !important; }
+        [data-theme="dark"] .bg-warm { background: #2A2A2A !important; }
+        [data-theme="dark"] .bg-green-50 { background: #1A2E1A !important; }
+        [data-theme="dark"] .border-line { border-color: #333 !important; }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: #444; }
+        [data-theme="dark"] .skeleton { background: linear-gradient(90deg, #252525 25%, #333 50%, #252525 75%) !important; background-size: 200% 100%; }
+
+        /* Skeleton loader */
+        .skeleton { background: linear-gradient(90deg, #F5F3F0 25%, #E5E2DD 50%, #F5F3F0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .skeleton-text { height: 14px; margin-bottom: 8px; }
+        .skeleton-title { height: 24px; width: 60%; margin-bottom: 12px; }
+        .skeleton-card { height: 120px; }
+        .skeleton-stat { height: 80px; }
+        /* Stagger animations */
+        .stagger > * { opacity: 0; animation: fadeSlideUp 0.4s ease-out forwards; }
+        .stagger > *:nth-child(1) { animation-delay: 0s; }
+        .stagger > *:nth-child(2) { animation-delay: 0.05s; }
+        .stagger > *:nth-child(3) { animation-delay: 0.1s; }
+        .stagger > *:nth-child(4) { animation-delay: 0.15s; }
+        .stagger > *:nth-child(5) { animation-delay: 0.2s; }
+        .stagger > *:nth-child(6) { animation-delay: 0.25s; }
+        .stagger > *:nth-child(7) { animation-delay: 0.3s; }
+        .stagger > *:nth-child(8) { animation-delay: 0.35s; }
+        .stagger > *:nth-child(9) { animation-delay: 0.4s; }
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        /* Progress bar */
+        .progress-bar { height: 4px; background: #E5E2DD; border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #C9A962, #A68B4B); border-radius: 2px; transition: width 0.3s ease; }
+        /* Improved spacing */
+        .section-gap { margin-bottom: 2rem; }
+        /* Status dot */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-dot.active { background: #2D8A56; animation: pulse-dot 2s infinite; }
+        .status-dot.inactive { background: #E5E2DD; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        /* Mobile improvements */
+        @media (max-width: 640px) {
+            .card { padding: 16px !important; border-radius: 10px; }
+            .card p-6, .card p-8, .card p-5 { padding: 16px !important; }
+            h2, h3 { font-size: 1.1rem !important; }
+            .btn { padding: 8px 14px; font-size: 0.8rem; }
+            .input { padding: 8px 12px; font-size: 0.85rem; }
+            .grid-cols-2 { grid-template-columns: 1fr !important; }
+        }
+        /* Chart.js override */
+        canvas { border-radius: 8px; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const API = window.location.origin;
+const VERSION = "4.0.0";
+
+// ========== i18n ==========
+const LANGS = {
+    he: {
+        title: 'SafeEye', login: 'התחבר', logout: 'התנתק', token_placeholder: 'טוקן...',
+        enter_token: 'הכנס טוקן API כדי להמשיך',
+        overview: 'סקירה', providers: 'ספקים', history: 'היסטוריה', tokens: 'טוקנים',
+        integrations: 'חיבורים', report: 'דיווח', about: 'אודות',
+        total_scans: 'סריקות', nsfw_detected: 'NSFW שזוהו', today: 'היום',
+        avg_latency: 'זמן ממוצע', blocklist: 'דומיינים חסומים', borderline: 'גבולי',
+        active_providers: 'ספקים פעילים', none_configured: 'לא הוגדרו',
+        scanning: 'סריקה', domain_blocklist: 'רשימת דומיינים', loading: 'טוען...',
+        all: 'הכל', nsfw_only: 'NSFW בלבד', no_scans: 'אין סריקות עדיין',
+        no_provider_data: 'אין נתוני ספקים. הריצו סריקות.',
+        create_token: 'יצירת טוקן', token_name: 'שם הטוקן (למשל: הבוט שלי)',
+        create: 'צור', revoke: 'בטל', token_created: 'הטוקן נוצר (העתק עכשיו, מוצג פעם אחת):',
+        no_tokens: 'לא נוצרו טוקנים',
+        sightengine_title: 'Sightengine', sightengine_desc: 'זיהוי עירום, אלימות, סמים, נשק. 2,000 סריקות/חודש בחינם.',
+        google_title: 'Google Cloud Vision', google_desc: 'SafeSearch - adult, violence, racy. 1,000/חודש בחינם.',
+        github_title: 'GitHub', github_desc: 'דיווח באגים ובקשות פיצ\'ר ישירות ל-GitHub.',
+        connected: 'מחובר', not_connected: 'לא מחובר', save: 'שמור', connect: 'חבר',
+        api_user: 'API User', api_secret: 'API Secret', credentials_path: 'נתיב קובץ credentials',
+        repo: 'Repository', gh_token: 'GitHub Token',
+        bug_report: 'דיווח באג', feature_request: 'בקשת פיצ\'ר',
+        bug_title: 'כותרת הבאג', bug_desc: 'תיאור מפורט', feature_title: 'כותרת הפיצ\'ר',
+        feature_desc: 'תיאור הפיצ\'ר המבוקש', send: 'שלח', sent_ok: 'נשלח בהצלחה!',
+        send_fail: 'שליחה נכשלה', configure_github: 'הגדר GitHub בטאב חיבורים',
+        features: 'יכולות', developer: 'מפתח', tech_stack: 'טכנולוגיות', rights: 'זכויות',
+        created_by: 'נוצר על ידי', license: 'רישיון', confirm_revoke: 'לבטל את הטוקן',
+        latency: 'זמן תגובה', flagged: 'סומנו', errors: 'שגיאות', accuracy: 'דיוק',
+        skipped: 'דולגו', flag_rate: 'אחוז סימון', scans: 'סריקות',
+        confidence: 'ביטחון', duration: 'משך', labels: 'תוויות', provider_results: 'תוצאות ספקים',
+        created_at: 'נוצר', expires: 'פג תוקף', never: 'לעולם לא', scans_used: 'סריקות',
+        last_used: 'שימוש אחרון',
+    },
+    en: {
+        title: 'SafeEye', login: 'Login', logout: 'Logout', token_placeholder: 'Token...',
+        enter_token: 'Enter your API token to continue',
+        overview: 'Overview', providers: 'Providers', history: 'History', tokens: 'Tokens',
+        integrations: 'Integrations', report: 'Report', about: 'About',
+        total_scans: 'Total Scans', nsfw_detected: 'NSFW Detected', today: 'Today',
+        avg_latency: 'Avg Latency', blocklist: 'Blocklist Domains', borderline: 'Borderline',
+        active_providers: 'Active Providers', none_configured: 'None configured',
+        scanning: 'Scanning', domain_blocklist: 'Domain Blocklist', loading: 'Loading...',
+        all: 'All', nsfw_only: 'NSFW Only', no_scans: 'No scans yet',
+        no_provider_data: 'No provider data. Run some scans first.',
+        create_token: 'Create Token', token_name: 'Token name (e.g. my-bot)',
+        create: 'Create', revoke: 'Revoke', token_created: 'Token created (copy now, shown once):',
+        no_tokens: 'No tokens created yet',
+        sightengine_title: 'Sightengine', sightengine_desc: 'Nudity, violence, drugs, weapons. 2,000 free scans/month.',
+        google_title: 'Google Cloud Vision', google_desc: 'SafeSearch - adult, violence, racy. 1,000 free/month.',
+        github_title: 'GitHub', github_desc: 'Report bugs and request features directly to GitHub.',
+        connected: 'Connected', not_connected: 'Not connected', save: 'Save', connect: 'Connect',
+        api_user: 'API User', api_secret: 'API Secret', credentials_path: 'Credentials file path',
+        repo: 'Repository', gh_token: 'GitHub Token',
+        bug_report: 'Bug Report', feature_request: 'Feature Request',
+        bug_title: 'Bug title', bug_desc: 'Detailed description', feature_title: 'Feature title',
+        feature_desc: 'Describe the feature', send: 'Send', sent_ok: 'Sent successfully!',
+        send_fail: 'Failed to send', configure_github: 'Configure GitHub in Integrations tab',
+        features: 'Features', developer: 'Developer', tech_stack: 'Tech Stack', rights: 'Rights',
+        created_by: 'Created by', license: 'License', confirm_revoke: 'Revoke token',
+        latency: 'Latency', flagged: 'Flagged', errors: 'Errors', accuracy: 'Accuracy',
+        skipped: 'Skipped', flag_rate: 'Flag Rate', scans: 'scans',
+        confidence: 'Confidence', duration: 'Duration', labels: 'Labels', provider_results: 'Provider Results',
+        created_at: 'Created', expires: 'Expires', never: 'Never', scans_used: 'Scans used',
+        last_used: 'Last used',
+    },
+};
+
+function useI18n() {
+    const [lang, setLang] = useState(localStorage.getItem('scanner_lang') || 'he');
+    const t = (key) => LANGS[lang]?.[key] || LANGS.en[key] || key;
+    const switchLang = (l) => { setLang(l); localStorage.setItem('scanner_lang', l); };
+    const isRtl = lang === 'he';
+    return { t, lang, switchLang, isRtl };
+}
+
+function useApi() {
+    const [token, setToken] = useState(localStorage.getItem('scanner_token') || '');
+    const headers = { Authorization: `Bearer ${token}` };
+    const saveToken = (t) => { setToken(t); localStorage.setItem('scanner_token', t); };
+    const clearToken = () => { setToken(''); localStorage.removeItem('scanner_token'); };
+    const fetchApi = async (path) => {
+        const res = await fetch(`${API}${path}`, { headers });
+        if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+        return res.json();
+    };
+    const postApi = async (path, body) => {
+        const res = await fetch(`${API}${path}`, {
+            method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        return res.json();
+    };
+    return { token, saveToken, clearToken, fetchApi, postApi, headers };
+}
+
+function ThemeToggle() {
+    const [dark, setDark] = useState(localStorage.getItem('scanner_theme') === 'dark');
+    const toggle = () => {
+        const next = !dark;
+        setDark(next);
+        document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+        localStorage.setItem('scanner_theme', next ? 'dark' : 'light');
+    };
+    return <button onClick={toggle} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '2px 6px' }}>{dark ? '☀️' : '🌙'}</button>;
+}
+
+function LangSwitch({ i18n }) {
+    return (
+        <div className="flex gap-1 text-xs">
+            <button className={`px-2 py-0.5 rounded ${i18n.lang === 'he' ? 'bg-gold' : 'bg-warm'}`}
+                onClick={() => i18n.switchLang('he')}>עב</button>
+            <button className={`px-2 py-0.5 rounded ${i18n.lang === 'en' ? 'bg-gold' : 'bg-warm'}`}
+                onClick={() => i18n.switchLang('en')}>EN</button>
+        </div>
+    );
+}
+
+function LoginScreen({ onLogin, i18n }) {
+    const [input, setInput] = useState('');
+    const [showHelp, setShowHelp] = useState(false);
+    const he = i18n.lang === 'he';
+    return (
+        <div className="min-h-screen flex items-center justify-center" dir="ltr">
+            <div className="card p-8 w-[420px] text-center" style={{ direction: 'ltr' }}>
+                <div className="text-5xl mb-3">🛡️</div>
+                <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEye</h1>
+                <p className="text-muted/70 text-xs mb-3">v{VERSION}</p>
+                <div className="mb-4 flex items-center justify-center gap-2"><LangSwitch i18n={i18n} /><ThemeToggle /></div>
+                <p className="text-muted mb-4 text-sm" dir={he ? 'rtl' : 'ltr'}>{he ? 'הכניסו את טוקן ה-API כדי להמשיך' : 'Enter your API token to continue'}</p>
+                <input className="input mb-3" type="password" value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && onLogin(input)}
+                    placeholder={i18n.t('token_placeholder')} autoFocus dir="ltr" />
+                <button className="w-full btn btn-blue mb-3" onClick={() => onLogin(input)}>{i18n.t('login')}</button>
+                <button className="text-muted text-xs hover:text-ink" onClick={() => setShowHelp(!showHelp)}>
+                    {he ? '❓ אין לי טוקן — מה עושים?' : '❓ No token? What do I do?'}
+                </button>
+                {showHelp && (
+                    <div className="mt-3 p-4 bg-warm rounded-lg text-sm text-left" dir={he ? 'rtl' : 'ltr'}>
+                        <p className="font-medium text-ink mb-2">{he ? 'איך מקבלים טוקן:' : 'How to get a token:'}</p>
+                        <p className="text-muted text-xs mb-2">{he
+                            ? '1. מצאו את ה-Master Token ב-.env (SCAN_API_MASTER_TOKEN)'
+                            : '1. Find the Master Token in .env (SCAN_API_MASTER_TOKEN)'}</p>
+                        <p className="text-muted text-xs mb-2">{he
+                            ? '2. או צרו טוקן חדש דרך הטרמינל:'
+                            : '2. Or create a new token via terminal:'}</p>
+                        <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mb-2" dir="ltr">
+                            curl -X POST http://localhost:1985/api/v1/admin/tokens -H "Authorization: Bearer YOUR_MASTER_TOKEN" -H "Content-Type: application/json" -d '{"{"}name":"my-token"{"}"}'
+                        </div>
+                        <p className="text-muted text-xs">{he
+                            ? '3. העתיקו את הטוקן שקיבלתם והדביקו כאן'
+                            : '3. Copy the returned token and paste it here'}</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function SkeletonLoader({ type = 'card', count = 1 }) {
+    const items = Array.from({ length: count });
+    if (type === 'stats') return (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {items.map((_, i) => <div key={i} className="skeleton skeleton-stat rounded-xl"></div>)}
+        </div>
+    );
+    if (type === 'cards') return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {items.map((_, i) => <div key={i} className="skeleton skeleton-card rounded-xl"></div>)}
+        </div>
+    );
+    return (
+        <div className="space-y-3">
+            {items.map((_, i) => <div key={i} className="skeleton skeleton-card rounded-xl"></div>)}
+        </div>
+    );
+}
+
+function ScanProgress({ status }) {
+    const steps = [
+        { key: 'download', label: '📥', pct: 20 },
+        { key: 'providers', label: '🔍', pct: 60 },
+        { key: 'voting', label: '🗳️', pct: 90 },
+        { key: 'done', label: '✅', pct: 100 },
+    ];
+    const current = status === 'pending' ? 0 : status === 'processing' ? 1 : status === 'completed' ? 3 : 0;
+    const pct = steps[current]?.pct || 0;
+    return (
+        <div>
+            <div className="progress-bar" style={{ marginBottom: '8px' }}>
+                <div className="progress-fill" style={{ width: `${pct}%` }}></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#7A7A7A' }}>
+                {steps.map((s, i) => (
+                    <span key={s.key} style={{ opacity: i <= current ? 1 : 0.3 }}>{s.label}</span>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function CopyBlock({ text, children }) {
+    const [copied, setCopied] = useState(false);
+    const copy = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(text || '');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <div className="relative group">
+            <div className="bg-ink rounded-lg p-3 font-mono text-xs text-gray-300" dir="ltr" style={{ paddingRight: '48px' }}>
+                {children || text}
+            </div>
+            <button onClick={copy} className="absolute top-2 right-2 px-2 py-1 rounded text-xs transition-all"
+                style={{ background: copied ? '#2D8A56' : '#333', color: copied ? 'white' : '#999', border: 'none', cursor: 'pointer' }}>
+                {copied ? '✓' : '📋'}
+            </button>
+        </div>
+    );
+}
+
+const LABEL_MAP = {
+    he: {
+        weapon_firearm: 'נשק חם', weapon_knife: 'סכין', weapon: 'נשק', gore: 'אלימות גרפית', drugs: 'סמים',
+        sexual_activity: 'פעילות מינית', sexual_display: 'תצוגה מינית', erotica: 'ארוטי', very_suggestive: 'סוגסטיבי',
+        offensive: 'פוגעני', adult: 'למבוגרים', violence: 'אלימות', racy: 'חושפני',
+        FEMALE_GENITALIA_EXPOSED: 'עירום מפורש', MALE_GENITALIA_EXPOSED: 'עירום מפורש',
+        BUTTOCKS_EXPOSED: 'עירום חלקי', ANUS_EXPOSED: 'עירום מפורש', FEMALE_BREAST_EXPOSED: 'עירום חלקי',
+    },
+    en: {
+        weapon_firearm: 'Firearm', weapon_knife: 'Knife', weapon: 'Weapon', gore: 'Graphic violence', drugs: 'Drugs',
+        sexual_activity: 'Sexual activity', sexual_display: 'Sexual display', erotica: 'Erotic', very_suggestive: 'Suggestive',
+        offensive: 'Offensive', adult: 'Adult', violence: 'Violence', racy: 'Racy',
+        FEMALE_GENITALIA_EXPOSED: 'Explicit nudity', MALE_GENITALIA_EXPOSED: 'Explicit nudity',
+        BUTTOCKS_EXPOSED: 'Partial nudity', ANUS_EXPOSED: 'Explicit nudity', FEMALE_BREAST_EXPOSED: 'Partial nudity',
+    },
+    ar: {
+        weapon_firearm: 'سلاح ناري', weapon_knife: 'سكين', weapon: 'سلاح', gore: 'عنف دموي', drugs: 'مخدرات',
+        sexual_activity: 'نشاط جنسي', sexual_display: 'عرض جنسي', erotica: 'محتوى إباحي', very_suggestive: 'موحي',
+        offensive: 'محتوى مسيء', adult: 'محتوى للبالغين', violence: 'عنف', racy: 'جريء',
+        FEMALE_GENITALIA_EXPOSED: 'عري صريح', MALE_GENITALIA_EXPOSED: 'عري صريح',
+        BUTTOCKS_EXPOSED: 'عري جزئي', ANUS_EXPOSED: 'عري صريح', FEMALE_BREAST_EXPOSED: 'عري جزئي',
+    },
+    ru: {
+        weapon_firearm: 'Огнестрельное оружие', weapon_knife: 'Нож', weapon: 'Оружие', gore: 'Насилие', drugs: 'Наркотики',
+        sexual_activity: 'Сексуальная активность', sexual_display: 'Сексуальный контент', erotica: 'Эротика', very_suggestive: 'Откровенный',
+        offensive: 'Оскорбительный контент', adult: 'Контент для взрослых', violence: 'Насилие', racy: 'Вызывающий',
+        FEMALE_GENITALIA_EXPOSED: 'Откровенная нагота', MALE_GENITALIA_EXPOSED: 'Откровенная нагота',
+        BUTTOCKS_EXPOSED: 'Частичная нагота', ANUS_EXPOSED: 'Откровенная нагота', FEMALE_BREAST_EXPOSED: 'Частичная нагота',
+    },
+    fr: {
+        weapon_firearm: 'Arme à feu', weapon_knife: 'Couteau', weapon: 'Arme', gore: 'Violence graphique', drugs: 'Drogues',
+        sexual_activity: 'Activité sexuelle', sexual_display: 'Contenu sexuel', erotica: 'Érotique', very_suggestive: 'Suggestif',
+        offensive: 'Contenu offensant', adult: 'Contenu adulte', violence: 'Violence', racy: 'Osé',
+        FEMALE_GENITALIA_EXPOSED: 'Nudité explicite', MALE_GENITALIA_EXPOSED: 'Nudité explicite',
+        BUTTOCKS_EXPOSED: 'Nudité partielle', ANUS_EXPOSED: 'Nudité explicite', FEMALE_BREAST_EXPOSED: 'Nudité partielle',
+    },
+};
+function tLabel(raw, lang) {
+    const parts = raw.split(':');
+    const key = parts[0];
+    const conf = parts[1] ? ` (${Math.round(parseFloat(parts[1]) * 100)}%)` : '';
+    const dict = LABEL_MAP[lang] || LABEL_MAP.en;
+    return (dict[key] || key) + conf;
+}
+
+function StatCard({ label, value, sub, icon }) {
+    return (
+        <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted text-sm">{icon && <span>{icon}</span>}{label}</div>
+            <div className="text-2xl font-bold mt-1" dir="ltr">{value}</div>
+            {sub && <div className="text-muted/70 text-xs mt-1" dir="ltr">{sub}</div>}
+        </div>
+    );
+}
+
+function Expandable({ title, icon, children, defaultOpen }) {
+    const [open, setOpen] = useState(defaultOpen || false);
+    return (
+        <div className={`card clickable ${open ? 'card-expand' : ''}`}>
+            <div className="p-4 flex justify-between items-center" onClick={() => setOpen(!open)}>
+                <span className="font-medium">{icon} {title}</span>
+                <span className="text-muted/70 text-sm">{open ? '▲' : '▼'}</span>
+            </div>
+            {open && <div className="px-4 pb-4 fade-in border-t border-line pt-3">{children}</div>}
+        </div>
+    );
+}
+
+/* ========== OVERVIEW ========== */
+function OverviewTab({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [data, setData] = useState(null);
+    useEffect(() => { api.fetchApi('/api/v1/stats').then(setData).catch(() => {}); }, []);
+    if (!data) return <SkeletonLoader type="stats" count={4} />;
+
+    const stats = [
+        { icon: '📊', label: i18n.t('total_scans'), value: data.total_scans, color: '#C9A962' },
+        { icon: '🚨', label: i18n.t('nsfw_detected'), value: data.nsfw_detected, sub: `${data.nsfw_rate}%`, color: '#C0392B' },
+        { icon: '📅', label: i18n.t('today'), value: data.scans_today, color: '#2D8A56' },
+        { icon: '⚡', label: i18n.t('avg_latency'), value: `${data.avg_scan_ms}ms`, color: '#A68B4B' },
+    ];
+
+    return (
+        <div className="space-y-6 stagger">
+            {/* Hero stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {stats.map((s, i) => (
+                    <div key={i} className="card p-6 text-center">
+                        <div className="text-3xl mb-3">{s.icon}</div>
+                        <div className="text-3xl font-bold" style={{ fontFamily: 'Playfair Display, serif', color: s.color }} dir="ltr">{s.value}</div>
+                        <div className="text-muted text-sm mt-1">{s.label}</div>
+                        {s.sub && <div className="text-muted/70 text-xs mt-1" dir="ltr">{s.sub}</div>}
+                    </div>
+                ))}
+            </div>
+
+            {/* Details in two columns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="card p-6">
+                    <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🔍 {i18n.t('scanning')}</h3>
+                    <div className="space-y-3">
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('total_scans')}</span><span className="text-ink font-medium" dir="ltr">{data.total_scans}</span></div>
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('nsfw_detected')}</span><span className="text-red-600 font-medium" dir="ltr">{data.nsfw_detected} ({data.nsfw_rate}%)</span></div>
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('borderline')}</span><span className="text-ink" dir="ltr">{data.borderline_count}</span></div>
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('avg_latency')}</span><span className="text-ink" dir="ltr">{data.avg_scan_ms}ms</span></div>
+                    </div>
+                </div>
+                <div className="card p-6">
+                    <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🚫 {i18n.t('domain_blocklist')}</h3>
+                    <div className="space-y-3">
+                        <div className="flex justify-between"><span className="text-muted">Domains</span><span className="text-ink font-bold text-lg" dir="ltr">{data.blocklist_size.toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span className="text-muted">Regex Patterns</span><span className="text-ink" dir="ltr">50+</span></div>
+                        <div className="flex justify-between"><span className="text-muted">Short URL Services</span><span className="text-ink" dir="ltr">20+</span></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Active providers */}
+            <div className="card p-6">
+                <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>⚙️ {i18n.t('active_providers')}</h3>
+                {data.providers_active.length > 0
+                    ? <div className="flex gap-3 flex-wrap">{data.providers_active.map(p =>
+                        <span key={p} className="px-4 py-2 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200"><span className="status-dot active" style={{marginRight:'6px'}}></span>{p}</span>
+                    )}</div>
+                    : <span className="text-muted/70">{i18n.t('none_configured')}</span>
+                }
+            </div>
+        </div>
+    );
+}
+
+/* ========== PROVIDERS ========== */
+function ProvidersTab({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [data, setData] = useState([]);
+    const chartRef = useRef(null);
+    const chartInstance = useRef(null);
+
+    useEffect(() => { api.fetchApi('/api/v1/stats/providers').then(setData).catch(() => {}); }, []);
+
+    useEffect(() => {
+        if (!data.length || !chartRef.current) return;
+        if (chartInstance.current) chartInstance.current.destroy();
+        chartInstance.current = new Chart(chartRef.current, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.provider),
+                datasets: [
+                    { label: i18n.t('avg_latency') + ' (ms)', data: data.map(d => d.avg_latency_ms), backgroundColor: '#C9A962', borderRadius: 6 },
+                    { label: i18n.t('flagged'), data: data.map(d => d.nsfw_flagged), backgroundColor: '#C0392B', borderRadius: 6 },
+                    { label: i18n.t('errors'), data: data.map(d => d.error_count), backgroundColor: '#D4A017', borderRadius: 6 },
+                ],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#7A7A7A', font: { family: 'Heebo' } } } },
+                scales: { y: { ticks: { color: '#7A7A7A' }, grid: { color: '#E5E2DD' } }, x: { ticks: { color: '#7A7A7A' }, grid: { display: false } } },
+            },
+        });
+    }, [data]);
+
+    if (!data.length) return <SkeletonLoader type="cards" count={4} />;
+
+    return (
+        <div className="space-y-6 stagger">
+            {/* Chart */}
+            <div className="card p-6" dir="ltr"><canvas ref={chartRef}></canvas></div>
+
+            {/* Provider cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {data.map(p => (
+                    <div key={p.provider} className="card p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="text-2xl">📡</span>
+                            <div>
+                                <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{p.provider}</h4>
+                                <span className="text-muted text-xs">{p.total_scans} {i18n.t('scans')}</span>
+                            </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('flagged')}</span><span className="text-red-600 font-bold" dir="ltr">{p.nsfw_flagged}</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('latency')}</span><span className="text-ink" dir="ltr">{p.avg_latency_ms}ms</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('errors')}</span><span className="text-amber-600" dir="ltr">{p.error_count}</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('accuracy')}</span><span className="text-green-600 font-medium" dir="ltr">{p.accuracy !== null ? `${p.accuracy}%` : '-'}</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('flag_rate')}</span><span className="text-ink" dir="ltr">{p.total_scans > 0 ? `${(p.nsfw_flagged / p.total_scans * 100).toFixed(1)}%` : '-'}</span></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/* ========== HISTORY ========== */
+function HistoryTab({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [items, setItems] = useState([]);
+    const [nsfw, setNsfw] = useState(false);
+    const [expanded, setExpanded] = useState(null);
+    const [detail, setDetail] = useState(null);
+
+    useEffect(() => {
+        api.fetchApi(`/api/v1/stats/history?limit=100&nsfw_only=${nsfw}`).then(setItems).catch(() => {});
+    }, [nsfw]);
+
+    const toggle = async (id) => {
+        if (expanded === id) { setExpanded(null); setDetail(null); return; }
+        setExpanded(id);
+        try { setDetail(await api.fetchApi(`/api/v1/scan/${id}`)); } catch { setDetail(null); }
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Filter buttons */}
+            <div className="card p-4 flex items-center gap-3">
+                <span className="text-muted text-sm">{he ? 'סינון:' : 'Filter:'}</span>
+                <button className={`btn ${!nsfw ? 'btn-blue' : 'btn-gray'}`} onClick={() => setNsfw(false)}>{i18n.t('all')}</button>
+                <button className={`btn ${nsfw ? 'btn-red' : 'btn-gray'}`} onClick={() => setNsfw(true)}>{i18n.t('nsfw_only')}</button>
+                <span className="text-muted/70 text-xs" style={{ marginInlineStart: 'auto' }}>{items.length} {he ? 'תוצאות' : 'results'}</span>
+            </div>
+
+            {/* Scan cards */}
+            <div className="space-y-3">
+                {items.map(s => (
+                    <div key={s.scan_id} className={`card clickable ${expanded === s.scan_id ? 'card-expand' : ''}`} onClick={() => toggle(s.scan_id)}>
+                        <div className="p-5 flex flex-col sm:flex-row sm:justify-between gap-2 sm:items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="text-2xl">{s.is_nsfw ? '🚨' : '✅'}</div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 rounded text-xs text-white ${s.is_nsfw ? (s.borderline ? 'badge-borderline' : 'badge-nsfw') : 'badge-safe'}`}>
+                                            {s.is_nsfw ? (s.borderline ? 'BORDERLINE' : 'NSFW') : 'SAFE'}
+                                        </span>
+                                        {s.file_type && <span className="text-xs text-muted bg-warm px-2 py-0.5 rounded">{s.file_type}</span>}
+                                    </div>
+                                    <span className="text-xs text-muted font-mono mt-1 block" dir="ltr">{s.scan_id}</span>
+                                </div>
+                            </div>
+                            <div className="text-sm text-muted" dir="ltr">
+                                <span className="font-medium">{s.providers_agree}/{s.providers_total}</span>
+                                <span className="mx-2 text-line">|</span>
+                                <span>{new Date(s.timestamp).toLocaleString()}</span>
+                            </div>
+                        </div>
+                        {expanded === s.scan_id && detail && (
+                            <div className="px-5 pb-5 fade-in border-t border-line pt-4">
+                                <div className="grid grid-cols-3 gap-4 mb-4">
+                                    <div className="text-center"><div className="text-xs text-muted">{i18n.t('confidence')}</div><div className="text-lg font-bold text-ink" dir="ltr">{(s.confidence * 100).toFixed(0)}%</div></div>
+                                    <div className="text-center"><div className="text-xs text-muted">{i18n.t('duration')}</div><div className="text-lg font-bold text-ink" dir="ltr">{s.duration_ms}ms</div></div>
+                                    <div className="text-center"><div className="text-xs text-muted">{i18n.t('labels')}</div><div className="text-sm text-ink">{s.labels.length > 0 ? s.labels.map(l => tLabel(l, i18n.lang)).join(', ') : '-'}</div></div>
+                                </div>
+                                {detail.provider_results && detail.provider_results.length > 0 && (
+                                    <div>
+                                        <div className="text-xs text-muted mb-2 font-medium">{i18n.t('provider_results')}:</div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {detail.provider_results.map((pr, i) => (
+                                                <div key={i} className="bg-warm rounded-lg p-3 text-sm" dir="ltr">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="font-medium text-ink">{pr.provider}</span>
+                                                        <span className={`px-2 py-0.5 rounded text-xs text-white ${pr.is_nsfw ? 'badge-nsfw' : 'badge-safe'}`}>
+                                                            {pr.is_nsfw ? 'NSFW' : 'Safe'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-muted text-xs mt-1">{(pr.confidence*100).toFixed(0)}% | {pr.latency_ms}ms {pr.labels?.length > 0 ? `| ${pr.labels.map(l => tLabel(l, i18n.lang)).join(', ')}` : ''}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))}
+                {items.length === 0 && <div className="card p-10 text-center"><div className="text-4xl mb-3">📋</div><p className="text-muted">{i18n.t('no_scans')}</p></div>}
+            </div>
+        </div>
+    );
+}
+
+/* ========== TOKENS ========== */
+function TokensTab({ api, i18n }) {
+    const [tokens, setTokens] = useState([]);
+    const [name, setName] = useState('');
+    const [created, setCreated] = useState(null);
+
+    const load = () => { api.fetchApi('/api/v1/admin/tokens').then(setTokens).catch(() => {}); };
+    useEffect(() => { load(); }, []);
+
+    const create = async () => {
+        if (!name) return;
+        const res = await fetch(`${API}/api/v1/admin/tokens`, {
+            method: 'POST', headers: { ...api.headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (res.ok) { const d = await res.json(); setCreated(d.token); setName(''); load(); }
+    };
+    const revoke = async (e, n) => {
+        e.stopPropagation();
+        if (!confirm(`${i18n.t('confirm_revoke')} "${n}"?`)) return;
+        await fetch(`${API}/api/v1/admin/tokens/${n}`, { method: 'DELETE', headers: api.headers });
+        load();
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="card p-6" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🔑 {i18n.t('create_token')}</h3>
+                <div className="flex gap-3">
+                    <input className="input flex-1" value={name} onChange={e => setName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && create()} placeholder={i18n.t('token_name')} />
+                    <button className="btn btn-blue" onClick={create}>{i18n.t('create')}</button>
+                </div>
+                {created && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="text-green-700 text-sm font-medium mb-2">{i18n.t('token_created')}</div>
+                        <CopyBlock text={created}><span className="text-green-800 break-all">{created}</span></CopyBlock>
+                    </div>
+                )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {tokens.map(t => (
+                    <div key={t.name} className="card p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="text-2xl">🔑</span>
+                            <div>
+                                <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{t.name}</h4>
+                                <span className="text-muted text-xs">{t.scan_count} {i18n.t('scans')}</span>
+                            </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('created_at')}</span><span className="text-ink" dir="ltr">{new Date(t.created_at).toLocaleDateString()}</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('expires')}</span><span className="text-ink">{t.expires_at ? new Date(t.expires_at).toLocaleDateString() : i18n.t('never')}</span></div>
+                            <div className="flex justify-between"><span className="text-muted">{i18n.t('last_used')}</span><span className="text-ink">{t.last_used ? new Date(t.last_used).toLocaleDateString() : i18n.t('never')}</span></div>
+                        </div>
+                        <button className="btn btn-red text-xs mt-4" onClick={(e) => revoke(e, t.name)}>{i18n.t('revoke')}</button>
+                    </div>
+                ))}
+            </div>
+            {tokens.length === 0 && <div className="card p-10 text-center"><div className="text-4xl mb-3">🔑</div><p className="text-muted">{i18n.t('no_tokens')}</p></div>}
+        </div>
+    );
+}
+
+/* ========== INTEGRATIONS ========== */
+const PROVIDER_DEFS = [
+    { key: 'nudenet', icon: '🧠', local: true },
+    { key: 'sightengine', icon: '👁️',
+      desc_he: 'זיהוי עירום, אלימות, סמים, נשק. 2,000/חודש חינם.',
+      desc_en: 'Nudity, violence, drugs, weapons. 2,000 free/month.',
+      link: 'https://sightengine.com/signup',
+      fields: [{ k: 'sightengine_user', ph: 'API User' }, { k: 'sightengine_secret', ph: 'API Secret', pw: true }],
+    },
+    { key: 'google_vision', icon: '☁️',
+      desc_he: 'SafeSearch — adult, violence, racy. 1,000/חודש חינם.',
+      desc_en: 'SafeSearch — adult, violence, racy. 1,000 free/month.',
+      link: 'https://console.cloud.google.com/apis/library/vision.googleapis.com',
+      fields: [{ k: 'google_vision_credentials', ph: 'Credentials path (/app/data/sa.json)' }],
+    },
+    { key: 'moderatecontent', icon: '🏢',
+      desc_he: 'ModerateContent — Enterprise. צור קשר לקבלת API Key ($100+/חודש).',
+      desc_en: 'ModerateContent — Enterprise. Contact for API Key ($100+/month).',
+      link: 'https://www.moderatecontent.com/#contact',
+      fields: [{ k: 'moderatecontent_key', ph: 'API Key' }],
+    },
+    { key: 'amazon_rekognition', icon: '🟠',
+      desc_he: 'Amazon Rekognition — עירום, אלימות, נשק. $200 קרדיט חינם.',
+      desc_en: 'Amazon Rekognition — nudity, violence, weapons. $200 free credits.',
+      link: 'https://aws.amazon.com/rekognition/',
+      fields: [{ k: 'aws_access_key', ph: 'AWS Access Key ID' }, { k: 'aws_secret_key', ph: 'AWS Secret Key', pw: true }, { k: 'aws_region', ph: 'Region (us-east-1)' }],
+    },
+    { key: 'azure_content_safety', icon: '🔷',
+      desc_he: 'Microsoft Azure — שנאה, פגיעה עצמית, מיני, אלימות.',
+      desc_en: 'Microsoft Azure — hate, self-harm, sexual, violence.',
+      link: 'https://portal.azure.com/#create/Microsoft.CognitiveServicesContentSafety',
+      fields: [{ k: 'azure_key', ph: 'API Key' }, { k: 'azure_endpoint', ph: 'Endpoint URL' }],
+    },
+    { key: 'picpurify', icon: '🔍',
+      desc_he: 'PicPurify — עירום, gore, סמים, נשק. 2,000 סריקות חינם.',
+      desc_en: 'PicPurify — nudity, gore, drugs, weapons. 2,000 free scans.',
+      link: 'https://www.picpurify.com/pricing.html',
+      fields: [{ k: 'picpurify_key', ph: 'API Key' }],
+    },
+];
+
+function IntegrationsTab({ api, i18n }) {
+    const [providers, setProviders] = useState(null);
+    const [forms, setForms] = useState({});
+    const [msg, setMsg] = useState('');
+    const [fieldErrors, setFieldErrors] = useState({});
+
+    const reload = () => { api.fetchApi('/api/v1/admin/providers').then(setProviders).catch(() => {}); };
+    useEffect(() => { reload(); }, []);
+
+    const connect = async (def) => {
+        const body = {};
+        const errors = {};
+        for (const f of def.fields) {
+            const val = (forms[f.k] || '').trim();
+            if (!val) { errors[f.k] = true; }
+            else { body[f.k] = val; }
+        }
+        if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+        setFieldErrors({});
+        const res = await api.postApi('/api/v1/admin/providers', body);
+        setMsg(res.status === 'ok' ? '✅' : '❌');
+        setForms({});
+        reload();
+        setTimeout(() => setMsg(''), 3000);
+    };
+
+    const disconnect = async (key) => {
+        await api.postApi('/api/v1/admin/providers/disconnect', { provider: key });
+        setMsg('🔌');
+        reload();
+        setTimeout(() => setMsg(''), 2000);
+    };
+
+    if (!providers) return <div className="text-muted py-8 text-center">{i18n.t('loading')}</div>;
+
+    const Badge = ({ ok }) => <span className={`px-2 py-0.5 rounded text-xs text-white ${ok ? 'badge-safe' : 'bg-slate-600'}`}>{ok ? i18n.t('connected') : i18n.t('not_connected')}</span>;
+    const signupText = i18n.lang === 'he' ? '→ הרשמה והשגת מפתח' : '→ Sign up & get API key';
+
+    const he = i18n.lang === 'he';
+    return (
+        <div className="space-y-6">
+            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-3xl mb-2">🔗</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'חיבור ספקי סריקה' : 'Connect Scan Providers'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'חברו ספקים נוספים לסריקה מדויקת יותר' : 'Connect additional providers for better accuracy'}</p>
+            </div>
+            {msg && <div className="text-center text-lg">{msg}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {PROVIDER_DEFS.map(def => {
+                    const isConnected = def.local || providers[def.key]?.configured;
+                    return (
+                        <div key={def.key} className="card p-6">
+                            <div className="flex items-center gap-3 mb-3">
+                                <span className="text-2xl">{def.icon}</span>
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{def.key}</h4>
+                                </div>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${isConnected ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-warm text-muted border border-line'}`}>
+                                    {isConnected ? (he ? '✅ מחובר' : '✅ Connected') : (he ? 'לא מחובר' : 'Not connected')}
+                                </span>
+                            </div>
+                            {def.local ? (
+                                <p className="text-muted text-sm">{he ? 'מודל מקומי, תמיד פעיל. לא צריך טוקן.' : 'Local model, always active. No API key needed.'}</p>
+                            ) : isConnected ? (
+                                <div>
+                                    <p className="text-green-600 text-sm mb-3">{he ? 'מחובר ופעיל' : 'Connected and active'}</p>
+                                    <button className="btn btn-red text-xs" onClick={() => disconnect(def.key)}>{he ? '🔌 נתק' : '🔌 Disconnect'}</button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <p className="text-muted text-sm mb-2">{he ? def.desc_he : def.desc_en}</p>
+                                    {def.link && <a href={def.link} target="_blank" rel="noopener" className="text-gold-dark hover:text-gold text-xs mb-3 inline-block">{he ? '→ הרשמה והשגת מפתח' : '→ Sign up & get API key'}</a>}
+                                    <div className="space-y-2">
+                                        {def.fields.map(f => (
+                                            <div key={f.k}>
+                                                <input className={`input ${fieldErrors[f.k] ? 'border-red-500' : ''}`} type={f.pw ? 'password' : 'text'}
+                                                    placeholder={f.ph} value={forms[f.k] || ''}
+                                                    onChange={e => { setForms({...forms, [f.k]: e.target.value}); setFieldErrors({...fieldErrors, [f.k]: false}); }} dir="ltr" />
+                                                {fieldErrors[f.k] && <p className="text-red-600 text-xs mt-0.5">{he ? 'שדה חובה' : 'Required'}</p>}
+                                            </div>
+                                        ))}
+                                        <button className="btn btn-green" onClick={() => connect(def)}>{i18n.t('connect')}</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+/* ========== REPORT ========== */
+function ReportTab({ api, i18n }) {
+    const [mode, setMode] = useState('bug');
+    const [title, setTitle] = useState('');
+    const [desc, setDesc] = useState('');
+    const [status, setStatus] = useState('');
+
+    const REPO_URL = 'https://github.com/Dandona100/SafeEye';
+
+    const send = async () => {
+        if (!title) return;
+        const endpoint = mode === 'bug' ? '/api/v1/report/bug' : '/api/v1/report/feature';
+        const res = await api.postApi(endpoint, { title, description: desc });
+        if (res.status === 'created') {
+            setStatus(`✅ ${i18n.t('sent_ok')} ${res.url || ''}`);
+            setTitle(''); setDesc('');
+        } else if (res.status === 'no_repo' || res.status === 'no_token') {
+            setStatus(`⚠️ ${res.message}`);
+        } else {
+            setStatus(`❌ ${i18n.t('send_fail')}: ${res.message || ''}`);
+        }
+        setTimeout(() => setStatus(''), 8000);
+    };
+
+    const openGH = (path) => window.open(`${REPO_URL}${path}`, '_blank');
+
+    const he = i18n.lang === 'he';
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-3xl mb-2">📝</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'דיווח ותרומה' : 'Report & Contribute'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'עזרו לנו לשפר את SafeEye' : 'Help us improve SafeEye'}</p>
+            </div>
+
+            {/* Report form */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="card p-6">
+                    <div className="flex gap-3 mb-4">
+                        <button className={`btn flex-1 ${mode === 'bug' ? 'btn-red' : 'btn-gray'}`} onClick={() => setMode('bug')}>🐛 {i18n.t('bug_report')}</button>
+                        <button className={`btn flex-1 ${mode === 'feature' ? 'btn-blue' : 'btn-gray'}`} onClick={() => setMode('feature')}>💡 {i18n.t('feature_request')}</button>
+                    </div>
+                    <div className="space-y-3">
+                        <input className="input" placeholder={mode === 'bug' ? i18n.t('bug_title') : i18n.t('feature_title')}
+                            value={title} onChange={e => setTitle(e.target.value)} />
+                        <textarea className="input" placeholder={mode === 'bug' ? i18n.t('bug_desc') : i18n.t('feature_desc')}
+                            value={desc} onChange={e => setDesc(e.target.value)} />
+                        <button className="btn btn-blue w-full" onClick={send}>{i18n.t('send')}</button>
+                        {status && <div className="text-sm mt-2 p-3 rounded-lg bg-warm break-all">{status}</div>}
+                    </div>
+                </div>
+
+                {/* GitHub links */}
+                <div className="card p-6">
+                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🔗 GitHub</h4>
+                    <div className="space-y-3">
+                        {[
+                            { icon: '🐛', text: he ? 'דיווח באג ב-GitHub' : 'Report bug on GitHub', path: '/issues/new?labels=bug' },
+                            { icon: '💡', text: he ? 'בקשת פיצ\'ר' : 'Request feature', path: '/issues/new?labels=enhancement' },
+                            { icon: '🔀', text: he ? 'הצע Pull Request' : 'Submit Pull Request', path: '/pulls' },
+                            { icon: '⭐', text: he ? 'תנו כוכב!' : 'Star us!', path: '' },
+                        ].map((item, i) => (
+                            <button key={i} className="card p-3 w-full flex items-center gap-3 clickable" onClick={() => openGH(item.path)}>
+                                <span className="text-xl">{item.icon}</span>
+                                <span className="text-sm text-ink">{item.text}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-muted/70 text-xs mt-4 text-center" dir="ltr">{REPO_URL}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ========== ABOUT ========== */
+function AnalyticsCard({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [data, setData] = useState(null);
+    const [showVisitors, setShowVisitors] = useState(false);
+    useEffect(() => { api.fetchApi('/api/v1/admin/analytics').then(setData).catch(() => {}); }, []);
+    if (!data) return null;
+    const gh = data.github || {};
+    const usage = data.usage || {};
+    const visitors = data.visitors || {};
+    return (
+        <div className="space-y-4">
+            <div className="card p-6">
+                <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>📈 {he ? 'אנליטיקס' : 'Analytics'}</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    {[
+                        { icon: '⭐', label: 'Stars', value: gh.stars || 0 },
+                        { icon: '🍴', label: 'Forks', value: gh.forks || 0 },
+                        { icon: '📊', label: he ? 'סריקות' : 'Scans', value: usage.total_scans || 0 },
+                        { icon: '🔑', label: he ? 'טוקנים' : 'Tokens', value: usage.total_tokens || 0 },
+                    ].map((s, i) => (
+                        <div key={i} className="bg-warm rounded-lg p-3 text-center">
+                            <div className="text-xl mb-1">{s.icon}</div>
+                            <div className="text-lg font-bold text-ink">{s.value}</div>
+                            <div className="text-xs text-muted">{s.label}</div>
+                        </div>
+                    ))}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{visitors.total_requests || 0}</div>
+                        <div className="text-xs text-muted">{he ? 'בקשות' : 'Requests'}</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{visitors.unique_ips || 0}</div>
+                        <div className="text-xs text-muted">{he ? 'מבקרים ייחודיים' : 'Unique Visitors'}</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{usage.community_reports || 0}</div>
+                        <div className="text-xs text-muted">{he ? 'דיווחי קהילה' : 'Reports'}</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Visitor log — admin only */}
+            <div className="card p-6">
+                <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>👥 {he ? 'מבקרים אחרונים' : 'Recent Visitors'}</h4>
+                    <button className="btn btn-gray text-xs" onClick={() => setShowVisitors(!showVisitors)}>
+                        {showVisitors ? (he ? 'הסתר' : 'Hide') : (he ? 'הצג' : 'Show')}
+                    </button>
+                </div>
+                {showVisitors && data.recent_visitors && (
+                    <div className="space-y-2 fade-in">
+                        {data.recent_visitors.map((v, i) => (
+                            <div key={i} className="bg-warm rounded-lg p-3 text-xs" dir="ltr">
+                                <div className="flex justify-between mb-1">
+                                    <span className="font-mono text-ink">{v.ip}</span>
+                                    <span className="text-muted">{new Date(v.ts).toLocaleString()}</span>
+                                </div>
+                                <div className="text-muted">{v.method} <span className="font-medium text-ink">{v.path}</span></div>
+                                {v.referer && <div className="text-muted mt-1">← {v.referer}</div>}
+                                {v.ua && <div className="text-muted mt-1" style={{fontSize:'0.65rem'}}>{v.ua}</div>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {Object.keys(data.top_referrers || {}).length > 0 && (
+                    <div className="mt-3">
+                        <div className="text-xs text-muted mb-2 font-medium">{he ? 'מקורות הגעה:' : 'Top Referrers:'}</div>
+                        {Object.entries(data.top_referrers).map(([ref, count]) => (
+                            <div key={ref} className="flex justify-between text-xs py-1">
+                                <span className="text-muted" dir="ltr" style={{maxWidth:'80%',overflow:'hidden',textOverflow:'ellipsis'}}>{ref}</span>
+                                <span className="text-ink font-medium">{count}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function UpdateChecker({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [status, setStatus] = useState(null);
+    const [checking, setChecking] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState(null);
+
+    const check = async () => {
+        setChecking(true);
+        setUpdateStatus(null);
+        try {
+            const data = await api.fetchApi('/api/v1/admin/check-update');
+            setStatus(data);
+        } catch (e) {
+            setStatus({ status: 'error', message: e.message });
+        }
+        setChecking(false);
+    };
+
+    return (
+        <div className="card p-6">
+            <div className="flex items-center gap-3 mb-3">
+                <span className="text-2xl">🔄</span>
+                <div>
+                    <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'עדכונים' : 'Updates'}</h4>
+                    <span className="text-muted text-xs">v{VERSION}</span>
+                </div>
+            </div>
+            <button className={`btn btn-blue text-sm mb-3 ${checking ? 'opacity-50' : ''}`} disabled={checking} onClick={check}>
+                {checking ? '⏳' : '🔍'} {he ? 'בדוק עדכונים' : 'Check for Updates'}
+            </button>
+
+            {status && status.status === 'ok' && (
+                <div className="fade-in space-y-2">
+                    <div className="bg-warm rounded-lg p-4 text-sm">
+                        <div className="flex justify-between mb-1">
+                            <span className="text-muted">{he ? 'גרסה נוכחית' : 'Current'}</span>
+                            <span className="text-ink font-medium">v{status.local_version}</span>
+                        </div>
+                        <div className="flex justify-between mb-1">
+                            <span className="text-muted">{he ? 'קומיט אחרון ב-GitHub' : 'Latest GitHub commit'}</span>
+                            <span className="text-ink font-mono text-xs" dir="ltr">{status.remote_sha}</span>
+                        </div>
+                        <div className="flex justify-between mb-1">
+                            <span className="text-muted">{he ? 'הודעה' : 'Message'}</span>
+                            <span className="text-ink text-xs" dir="ltr">{status.remote_message?.substring(0, 60)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-muted">{he ? 'תאריך' : 'Date'}</span>
+                            <span className="text-ink text-xs">{status.remote_date ? new Date(status.remote_date).toLocaleDateString() : '-'}</span>
+                        </div>
+                    </div>
+                    <div className="text-sm text-muted">
+                        <p className="font-medium mb-1">{he ? 'לעדכון, הריצו בשרת:' : 'To update, run on server:'}</p>
+                        <CopyBlock text={status.install_command || 'cd SafeEye && git pull && docker compose up -d --build'}>
+                            <span className="text-green-500">{status.install_command || 'cd SafeEye && git pull && docker compose up -d --build'}</span>
+                        </CopyBlock>
+                    </div>
+                    {updateStatus && <div className="text-sm mt-2">{updateStatus}</div>}
+                </div>
+            )}
+            {status && status.status === 'error' && (
+                <div className="text-red-600 text-sm">{status.message}</div>
+            )}
+        </div>
+    );
+}
+
+function AboutTab({ api, i18n }) {
+    const he = i18n.lang === 'he';
+
+    const detects = [
+        { icon: '🔞', title: he ? 'עירום ופורנוגרפיה' : 'Nudity & Pornography', desc: he ? 'זיהוי מדויק של תוכן מיני מפורש ועירום' : 'Accurate detection of explicit sexual content' },
+        { icon: '🔪', title: he ? 'אלימות ו-Gore' : 'Violence & Gore', desc: he ? 'דם, פציעות, גופות — אמיתי ומצויר' : 'Blood, injuries, corpses — real and drawn' },
+        { icon: '🔫', title: he ? 'נשק' : 'Weapons', desc: he ? 'אקדחים, רובים, סכינים — זיהוי 99%' : 'Firearms, rifles, knives — 99% detection' },
+        { icon: '💊', title: he ? 'סמים' : 'Drugs', desc: he ? 'שימוש בסמים, קנאביס, אביזרי סמים' : 'Drug use, cannabis, paraphernalia' },
+        { icon: '🚫', title: he ? 'תוכן פוגעני' : 'Offensive Content', desc: he ? 'סמלי שנאה, נאציזם, תוכן גזעני' : 'Hate symbols, nazism, racist content' },
+        { icon: '🌐', title: he ? '722K+ דומיינים' : '722K+ Domains', desc: he ? 'חסימה מיידית לפני הורדה' : 'Instant block before download' },
+    ];
+
+    const providers = [
+        { icon: '🧠', name: 'NudeNet', tag: he ? 'חינם' : 'Free' },
+        { icon: '👁️', name: 'Sightengine', tag: 'API' },
+        { icon: '☁️', name: 'Google Vision', tag: 'API' },
+        { icon: '🟠', name: 'Amazon', tag: 'API' },
+        { icon: '🔷', name: 'Azure AI', tag: 'API' },
+        { icon: '🔍', name: 'PicPurify', tag: 'API' },
+        { icon: '🏢', name: 'Moderate', tag: 'Ent.' },
+    ];
+
+    const tech = ['Python 3.11','FastAPI','NudeNet','OpenCV','SQLite','React 18','Tailwind CSS','Chart.js','Docker','Pydantic','Uvicorn','aiohttp','aiosqlite'];
+
+    const steps = [
+        { num: '01', title: he ? 'בדיקת URL' : 'URL Check', desc: he ? '722,000+ דומיינים נחסמים מיד, לפני הורדה. לינקים מקוצרים נפתחים.' : '722,000+ domains blocked instantly. Short URLs resolved.' },
+        { num: '02', title: he ? 'סריקה מקבילית' : 'Parallel Scan', desc: he ? 'עד 7 ספקי AI סורקים בו-זמנית. סרטונים → 4-12 פריימים אקראיים.' : 'Up to 7 AI providers scan simultaneously. Videos → 4-12 random frames.' },
+        { num: '03', title: he ? 'הצבעה חכמה' : 'Smart Voting', desc: he ? 'ביטחון גבוה או רוב ספקים → חסימה. ספק בודד → גבולי.' : 'High confidence or majority → block. Single provider → borderline.' },
+    ];
+
+    return (
+        <div className="space-y-8">
+            {/* Hero */}
+            <div className="card p-10 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-7xl mb-5">🛡️</div>
+                <h2 className="text-4xl font-bold font-display" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEye</h2>
+                <p className="text-muted text-lg mt-3">{he ? 'מערכת סריקת תוכן מזיק בקוד פתוח' : 'Open-Source Content Safety Scanner'}</p>
+                <p className="text-muted/70 text-sm mt-1">v{VERSION}</p>
+                <div className="flex justify-center gap-3 mt-6">
+                    <a href="https://github.com/Dandona100/SafeEye" target="_blank" className="btn btn-blue text-sm">⭐ GitHub</a>
+                    <a href="https://lhflow.com/SafeEye/docs.html" target="_blank" className="btn btn-gray text-sm">{he ? '📚 תיעוד' : '📚 Docs'}</a>
+                </div>
+            </div>
+
+            {/* Story — full width card with warm background */}
+            <div className="card p-8" style={{ background: '#1A1A1A', color: '#E0DDD8', borderColor: '#333' }}>
+                <div className="max-w-2xl mx-auto text-center space-y-4">
+                    <h3 className="text-2xl font-bold" style={{ fontFamily: 'Playfair Display, serif', color: 'white' }}>
+                        {he ? '📜 הסיפור שלנו' : '📜 Our Story'}
+                    </h3>
+                    <p className="text-lg leading-relaxed" style={{ color: '#C9C4BB' }}>
+                        {he
+                            ? <>הקב"ה ציווה אותנו <b style={{color:'#C9A962'}}>לשמור את העיניים ממראות אסורות</b>. אבל כיוון שנתן לאדם בחירה חופשית, הוא נותן לכל אחד לעשות מה שירצה.</>
+                            : <>God commanded us to <b style={{color:'#C9A962'}}>guard our eyes from forbidden sights</b>. But since He gave man free will, every person can choose their own path.</>
+                        }
+                    </p>
+                    <p className="text-xl font-bold" style={{ color: '#C9A962' }}>
+                        {he ? 'אבל... פורנוגרפיה? זה אסור גם אצלי! 🚫' : 'However... pornography? That\'s forbidden even by me! 🚫'}
+                    </p>
+                    <p style={{ color: '#C9C4BB' }}>
+                        {he
+                            ? <>ולכן נוצרה <b style={{color:'white'}}>SafeEye</b> — מערכת קוד פתוח ישראלית. אנחנו מזמינים אתכם <b style={{color:'#C9A962'}}>לעבור על הקוד, לשפר, ויחד נהפוך את SafeEye לפרויקט הקוד הפתוח הישראלי הגדול בעולם</b>.</>
+                            : <>That's why <b style={{color:'white'}}>SafeEye</b> was created. We invite you to <b style={{color:'#C9A962'}}>review the code, improve it, and together make SafeEye the largest Israeli open-source content moderation project</b>.</>
+                        }
+                    </p>
+                    <div className="pt-2">
+                        <img src="https://flagcdn.com/48x36/il.png" alt="Israel" style={{display:'inline',height:'32px',borderRadius:'4px'}} />
+                        <p className="text-sm mt-2" style={{color:'#7A7A7A'}}>{he ? 'בגאווה מישראל.' : 'Proudly made in Israel.'}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* How it works — 3 steps */}
+            <div>
+                <h3 className="text-xl font-bold text-center mb-6" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    {he ? 'איך זה עובד' : 'How It Works'}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {steps.map(s => (
+                        <div key={s.num} className="card p-6 text-center">
+                            <div className="text-4xl font-bold mb-3" style={{ fontFamily: 'Playfair Display, serif', color: '#C9A962', opacity: 0.4 }}>{s.num}</div>
+                            <h4 className="font-bold text-ink mb-2">{s.title}</h4>
+                            <p className="text-sm text-muted">{s.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* What it detects — grid cards */}
+            <div>
+                <h3 className="text-xl font-bold text-center mb-6" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    {he ? 'מה המערכת מזהה' : 'What It Detects'}
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {detects.map(d => (
+                        <div key={d.icon} className="card p-5 text-center">
+                            <div className="text-3xl mb-3">{d.icon}</div>
+                            <h4 className="font-bold text-ink text-sm mb-1">{d.title}</h4>
+                            <p className="text-xs text-muted">{d.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Providers — horizontal chips */}
+            <div>
+                <h3 className="text-xl font-bold text-center mb-6" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    {he ? '7 ספקים. הצבעה אחת.' : '7 Providers. One Vote.'}
+                </h3>
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                    {providers.map(p => (
+                        <div key={p.name} className="card p-3 text-center">
+                            <div className="text-2xl mb-1">{p.icon}</div>
+                            <div className="text-xs font-bold text-ink">{p.name}</div>
+                            <div className="text-[10px] text-muted">{p.tag}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* System Requirements */}
+            <div>
+                <h3 className="text-xl font-bold text-center mb-6" style={{ fontFamily: 'Playfair Display, serif' }}>
+                    {he ? '⚙️ דרישות מערכת' : '⚙️ System Requirements'}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="card p-5 text-center">
+                        <div className="text-2xl mb-2">🖥</div>
+                        <h4 className="font-bold text-ink text-sm mb-2">{he ? 'חומרה' : 'Hardware'}</h4>
+                        <div className="text-xs text-muted space-y-1">
+                            <p>CPU: 2 {he ? 'ליבות (סריקה במקביל)' : 'cores (parallel scanning)'}</p>
+                            <p>RAM: 512MB {he ? 'מינימום' : 'min'} (peak ~170MB)</p>
+                            <p>{he ? 'אחסון' : 'Storage'}: 1GB (image 810MB)</p>
+                            <p>GPU: {he ? 'לא נדרש' : 'not required'}</p>
+                        </div>
+                    </div>
+                    <div className="card p-5 text-center">
+                        <div className="text-2xl mb-2">🐳</div>
+                        <h4 className="font-bold text-ink text-sm mb-2">{he ? 'תוכנה' : 'Software'}</h4>
+                        <div className="text-xs text-muted space-y-1">
+                            <p>Docker + Compose</p>
+                            <p>{he ? 'או' : 'or'}: Python 3.11+, ffmpeg</p>
+                            <p>Linux / macOS / WSL2</p>
+                            <p>requirements.txt {he ? 'כלול' : 'included'}</p>
+                        </div>
+                    </div>
+                    <div className="card p-5 text-center">
+                        <div className="text-2xl mb-2">🌐</div>
+                        <h4 className="font-bold text-ink text-sm mb-2">{he ? 'רשת' : 'Network'}</h4>
+                        <div className="text-xs text-muted space-y-1">
+                            <p>{he ? 'אינטרנט (הפעלה ראשונה)' : 'Internet (first run)'}</p>
+                            <p>{he ? 'פורט' : 'Port'} 1985</p>
+                            <p>NudeNet {he ? 'עובד offline' : 'works offline'}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tech + Developer — side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="card p-6">
+                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🔧 {i18n.t('tech_stack')}</h4>
+                    <div className="flex flex-wrap gap-2">
+                        {tech.map(t => <span key={t} className="px-3 py-1.5 bg-warm rounded-full text-xs text-muted border border-line">{t}</span>)}
+                    </div>
+                </div>
+                <div className="card p-6">
+                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>👤 {i18n.t('developer')}</h4>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('created_by')}</span><span className="text-ink font-medium">DVS Technology</span></div>
+                        <div className="flex justify-between"><span className="text-muted">Telegram</span><span className="text-ink">@DVS20</span></div>
+                        <div className="flex justify-between"><span className="text-muted">GitHub</span><a href="https://github.com/Dandona100" target="_blank" className="text-gold-dark font-medium">Dandona100</a></div>
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('license')}</span><span className="text-ink">MIT</span></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Update checker */}
+            {/* Analytics */}
+            <AnalyticsCard api={api} i18n={i18n} />
+
+            <UpdateChecker api={api} i18n={i18n} />
+
+            <p className="text-center text-muted/40 text-xs pb-4">&copy; {new Date().getFullYear()} DVS Technology. {he ? 'כל הזכויות שמורות.' : 'All rights reserved.'}</p>
+        </div>
+    );
+}
+
+/* ========== API DOCS with Terminal ========== */
+function ApiDocsTab({ api, i18n, onNavigate }) {
+    const he = i18n.lang === 'he';
+    const baseUrl = window.location.origin;
+    const [termOpen, setTermOpen] = useState(false);
+    const [termLog, setTermLog] = useState([]);
+    const [termInput, setTermInput] = useState('');
+    const [sandboxToken, setSandboxToken] = useState(localStorage.getItem('sandbox_token') || '');
+    const [loading, setLoading] = useState(false);
+    const termRef = useRef(null);
+
+    // Auto-create sandbox token
+    useEffect(() => {
+        if (!sandboxToken) {
+            api.postApi('/api/v1/sandbox/token', {}).then(res => {
+                if (res.token) { setSandboxToken(res.token); localStorage.setItem('sandbox_token', res.token); }
+            }).catch(() => {});
+        }
+    }, []);
+
+    const log = (text, type = 'output') => {
+        setTermLog(prev => [...prev, { text, type, time: new Date().toLocaleTimeString() }]);
+        setTimeout(() => { if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight; }, 50);
+    };
+
+    const runInTerminal = async (cmd) => {
+        setTermOpen(true);
+        log(`$ ${cmd}`, 'cmd');
+        setLoading(true);
+        const token = sandboxToken;
+
+        try {
+            if (cmd.startsWith('scan file ') || cmd.startsWith('scan url ')) {
+                const isUrl = cmd.startsWith('scan url ');
+                const target = cmd.replace(/^scan (file|url) /, '');
+
+                if (isUrl) {
+                    const resp = await fetch(`${baseUrl}/api/v1/sandbox/scan?scan_url=${encodeURIComponent(target)}`, {
+                        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: '{}',
+                    });
+                    // Actually use the scan/url endpoint
+                    const resp2 = await fetch(`${baseUrl}/api/v1/scan/url?url=${encodeURIComponent(target)}`, {
+                        method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                    });
+                    const data = await resp2.json();
+                    log(JSON.stringify(data, null, 2), data.result?.is_nsfw ? 'error' : 'success');
+                } else {
+                    log('Use the file upload button or drag & drop a file', 'warn');
+                }
+            } else if (cmd === 'health') {
+                const resp = await fetch(`${baseUrl}/health`);
+                log(JSON.stringify(await resp.json(), null, 2), 'success');
+            } else if (cmd === 'stats') {
+                const resp = await fetch(`${baseUrl}/api/v1/stats`, { headers: { Authorization: `Bearer ${token}` } });
+                log(JSON.stringify(await resp.json(), null, 2), 'success');
+            } else if (cmd === 'providers') {
+                const resp = await fetch(`${baseUrl}/api/v1/stats/providers`, { headers: { Authorization: `Bearer ${token}` } });
+                log(JSON.stringify(await resp.json(), null, 2), 'success');
+            } else if (cmd === 'token') {
+                log(`Sandbox token: ${token}`, 'output');
+            } else if (cmd === 'help') {
+                log([
+                    'Commands:',
+                    '  health              — check service health',
+                    '  stats               — view scan statistics',
+                    '  providers           — list provider metrics',
+                    '  token               — show sandbox token',
+                    '  scan url <url>      — scan a URL',
+                    '  clear               — clear terminal',
+                    '  help                — show this help',
+                    '',
+                    'Or upload a file with the 📎 button to scan it.',
+                ].join('\n'), 'output');
+            } else if (cmd === 'clear') {
+                setTermLog([]);
+            } else {
+                log(`Unknown command: ${cmd}. Type "help" for commands.`, 'warn');
+            }
+        } catch (e) {
+            log(`Error: ${e.message}`, 'error');
+        }
+        setLoading(false);
+    };
+
+    const handleFileUpload = async (file) => {
+        setTermOpen(true);
+        log(`$ scan file "${file.name}" (${(file.size/1024).toFixed(1)}KB)`, 'cmd');
+        setLoading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const resp = await fetch(`${baseUrl}/api/v1/sandbox/scan`, {
+                method: 'POST', headers: { Authorization: `Bearer ${sandboxToken}` }, body: formData,
+            });
+            if (resp.status === 401) {
+                localStorage.removeItem('sandbox_token'); setSandboxToken('');
+                log('Token expired. Refresh the page.', 'error');
+            } else {
+                const data = await resp.json();
+                const r = data.result;
+                log(`Result: ${r?.is_nsfw ? '🚨 NSFW' : '✅ SAFE'} | confidence: ${((r?.confidence||0)*100).toFixed(0)}% | providers: ${r?.providers_agree}/${r?.providers_total}`, r?.is_nsfw ? 'error' : 'success');
+                if (r?.labels?.length > 0) log(`Labels: ${r.labels.join(', ')}`, 'warn');
+                r?.provider_results?.forEach(pr => {
+                    log(`  ${pr.provider}: ${pr.is_nsfw ? 'NSFW' : 'Safe'} (${(pr.confidence*100).toFixed(0)}%) ${pr.latency_ms}ms`, pr.is_nsfw ? 'error' : 'output');
+                });
+                log('---\n' + JSON.stringify(data, null, 2), 'json');
+            }
+        } catch (e) { log(`Error: ${e.message}`, 'error'); }
+        setLoading(false);
+    };
+
+    const termColors = { cmd: 'text-gold-dark', output: 'text-muted', success: 'text-green-600', error: 'text-red-600', warn: 'text-amber-600', json: 'text-line' };
+
+    // Simulate running code examples using the actual API
+    const runExample = async (lang) => {
+        setTermOpen(true);
+        const token = sandboxToken;
+        if (!token) { log('No sandbox token. Refresh the page.', 'error'); return; }
+
+        log(`$ [${lang}] ${he ? 'מריץ דוגמה...' : 'Running example...'}`, 'cmd');
+        setLoading(true);
+        try {
+            // All examples do the same thing: call /health then /stats to demonstrate
+            const healthResp = await fetch(`${baseUrl}/health`);
+            const healthData = await healthResp.json();
+            log(`# ${lang}: GET /health`, 'cmd');
+            log(JSON.stringify(healthData, null, 2), 'success');
+
+            const statsResp = await fetch(`${baseUrl}/api/v1/stats`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const statsData = await statsResp.json();
+            log(`# ${lang}: GET /api/v1/stats`, 'cmd');
+            log(JSON.stringify(statsData, null, 2), 'success');
+
+            log(`\n✅ ${he ? 'ה-API עובד! עכשיו העלו קובץ עם 📎 או הריצו:' : 'API works! Now upload a file with 📎 or run:'}\n  scan url <image_url>`, 'output');
+        } catch (e) { log(`Error: ${e.message}`, 'error'); }
+        setLoading(false);
+    };
+
+    const tk = sandboxToken || 'YOUR_TOKEN';
+
+    const codeExamples = [
+        { title: he ? '🚀 התחלה מהירה' : '🚀 Quick Start', run: 'health',
+          content: he ? <>טוקן טסט: <code className="bg-warm px-1 rounded text-green-600 text-xs select-all">{tk}</code></> : <>Test token: <code className="bg-warm px-1 rounded text-green-600 text-xs select-all">{tk}</code></>,
+          code: `# ${he ? 'בדיקת תקינות' : 'Health check'}\ncurl ${baseUrl}/health\n\n# ${he ? 'סריקת קובץ' : 'Scan file'}\ncurl -X POST ${baseUrl}/api/v1/scan/file \\\n  -H "Authorization: Bearer ${tk}" \\\n  -F "file=@image.jpg"\n\n# ${he ? 'סריקת URL' : 'Scan URL'}\ncurl -X POST "${baseUrl}/api/v1/scan/url?url=https://example.com/photo.jpg" \\\n  -H "Authorization: Bearer ${tk}"` },
+        { title: 'Python', run: 'python',
+          code: `import requests\n\nSAFEEYE = "${baseUrl}"\nTOKEN = "${tk}"\n\n# ${he ? 'בדיקת תקינות' : 'Health check'}\nprint(requests.get(f"{SAFEEYE}/health").json())\n\n# ${he ? 'סריקת קובץ' : 'Scan file'}\nwith open("image.jpg", "rb") as f:\n    resp = requests.post(\n        f"{SAFEEYE}/api/v1/scan/file",\n        headers={"Authorization": f"Bearer {TOKEN}"},\n        files={"file": f},\n    )\nresult = resp.json()["result"]\nprint("NSFW!" if result["is_nsfw"] else "Safe")\nprint(f"Confidence: {result['confidence']}")\nprint(f"Labels: {result['labels']}")` },
+        { title: 'Node.js', run: 'nodejs',
+          code: `const SAFEEYE = "${baseUrl}";\nconst TOKEN = "${tk}";\n\n// ${he ? 'בדיקת תקינות' : 'Health check'}\nconst health = await fetch(\`\${SAFEEYE}/health\`).then(r => r.json());\nconsole.log(health);\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nconst fs = require("fs");\nconst form = new FormData();\nform.append("file", fs.createReadStream("image.jpg"));\nconst resp = await fetch(\`\${SAFEEYE}/api/v1/scan/file\`, {\n  method: "POST",\n  headers: { Authorization: \`Bearer \${TOKEN}\` },\n  body: form,\n});\nconst { result } = await resp.json();\nconsole.log(result.is_nsfw ? "NSFW!" : "Safe");` },
+        { title: 'Telegram Bot', run: 'telegram',
+          code: `import aiohttp\n\nSAFEEYE = "${baseUrl}"\nTOKEN = "${tk}"\n\nasync def is_safe(file_path: str) -> bool:\n    """${he ? 'בדיקה אם קובץ בטוח לפני שליחה למשתמש' : 'Check if file is safe before sending to user'}"""\n    async with aiohttp.ClientSession() as session:\n        with open(file_path, "rb") as f:\n            data = aiohttp.FormData()\n            data.add_field("file", f, filename="check.jpg")\n            async with session.post(\n                f"{SAFEEYE}/api/v1/scan/file",\n                data=data,\n                headers={"Authorization": f"Bearer {TOKEN}"},\n            ) as resp:\n                result = (await resp.json())["result"]\n                return not result["is_nsfw"]\n\n# ${he ? 'בהנדלר של הבוט:' : 'In your bot handler:'}\nif await is_safe(downloaded_file):\n    await bot.send_document(chat_id, downloaded_file)\nelse:\n    os.remove(downloaded_file)\n    await bot.send_message(chat_id, "Blocked by SafeEye")` },
+        { title: 'Go', run: 'go',
+          code: `package main\n\nimport (\n    "bytes"\n    "fmt"\n    "io"\n    "mime/multipart"\n    "net/http"\n    "os"\n    "encoding/json"\n)\n\nconst SAFEEYE = "${baseUrl}"\nconst TOKEN = "${tk}"\n\nfunc scanFile(path string) (map[string]interface{}, error) {\n    file, _ := os.Open(path)\n    defer file.Close()\n\n    body := &bytes.Buffer{}\n    writer := multipart.NewWriter(body)\n    part, _ := writer.CreateFormFile("file", path)\n    io.Copy(part, file)\n    writer.Close()\n\n    req, _ := http.NewRequest("POST", SAFEEYE+"/api/v1/scan/file", body)\n    req.Header.Set("Authorization", "Bearer "+TOKEN)\n    req.Header.Set("Content-Type", writer.FormDataContentType())\n\n    resp, err := http.DefaultClient.Do(req)\n    if err != nil { return nil, err }\n    defer resp.Body.Close()\n\n    var result map[string]interface{}\n    json.NewDecoder(resp.Body).Decode(&result)\n    return result, nil\n}` },
+        { title: 'PHP', run: 'php',
+          code: `<?php\n$SAFEEYE = "${baseUrl}";\n$TOKEN = "${tk}";\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\n$ch = curl_init("$SAFEEYE/api/v1/scan/file");\ncurl_setopt_array($ch, [\n    CURLOPT_POST => true,\n    CURLOPT_RETURNTRANSFER => true,\n    CURLOPT_HTTPHEADER => ["Authorization: Bearer $TOKEN"],\n    CURLOPT_POSTFIELDS => [\n        'file' => new CURLFile('image.jpg')\n    ],\n]);\n$response = json_decode(curl_exec($ch), true);\ncurl_close($ch);\n\n$result = $response['result'];\necho $result['is_nsfw'] ? "NSFW!" : "Safe";\necho "\\nConfidence: " . $result['confidence'];\necho "\\nLabels: " . implode(', ', $result['labels']);\n?>` },
+        { title: 'Ruby', run: 'ruby',
+          code: `require 'net/http'\nrequire 'json'\nrequire 'uri'\n\nSAFEEYE = "${baseUrl}"\nTOKEN = "${tk}"\n\n# ${he ? 'סריקת קובץ' : 'Scan file'}\nuri = URI("#{SAFEEYE}/api/v1/scan/file")\nreq = Net::HTTP::Post::Multipart.new(\n  uri.path,\n  "file" => UploadIO.new("image.jpg", "image/jpeg")\n)\nreq["Authorization"] = "Bearer #{TOKEN}"\n\nresp = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http|\n  http.request(req)\n}\n\nresult = JSON.parse(resp.body)["result"]\nputs result["is_nsfw"] ? "NSFW!" : "Safe"` },
+        { title: 'Rust', run: 'rust',
+          code: `use reqwest;\nuse serde_json::Value;\n\nconst SAFEEYE: &str = "${baseUrl}";\nconst TOKEN: &str = "${tk}";\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = reqwest::Client::new();\n\n    // ${he ? 'סריקת קובץ' : 'Scan file'}\n    let file = tokio::fs::read("image.jpg").await?;\n    let part = reqwest::multipart::Part::bytes(file)\n        .file_name("image.jpg");\n    let form = reqwest::multipart::Form::new()\n        .part("file", part);\n\n    let resp: Value = client.post(&format!("{}/api/v1/scan/file", SAFEEYE))\n        .header("Authorization", format!("Bearer {}", TOKEN))\n        .multipart(form)\n        .send().await?\n        .json().await?;\n\n    let is_nsfw = resp["result"]["is_nsfw"].as_bool().unwrap();\n    println!("{}", if is_nsfw { "NSFW!" } else { "Safe" });\n    Ok(())\n}` },
+        { title: 'Java', run: 'java',
+          code: `import java.net.http.*;\nimport java.nio.file.*;\n\nString SAFEEYE = "${baseUrl}";\nString TOKEN = "${tk}";\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nvar boundary = "----SafeEye";\nvar body = "--" + boundary + "\\r\\n"\n    + "Content-Disposition: form-data; name=\\"file\\"; "\n    + "filename=\\"image.jpg\\"\\r\\n"\n    + "Content-Type: image/jpeg\\r\\n\\r\\n";\n\nvar fileBytes = Files.readAllBytes(Path.of("image.jpg"));\nvar end = "\\r\\n--" + boundary + "--\\r\\n";\n\nvar request = HttpRequest.newBuilder()\n    .uri(URI.create(SAFEEYE + "/api/v1/scan/file"))\n    .header("Authorization", "Bearer " + TOKEN)\n    .header("Content-Type", "multipart/form-data; boundary=" + boundary)\n    .POST(HttpRequest.BodyPublishers.ofByteArrays(\n        List.of(body.getBytes(), fileBytes, end.getBytes())))\n    .build();\n\nvar response = HttpClient.newHttpClient()\n    .send(request, HttpResponse.BodyHandlers.ofString());\nSystem.out.println(response.body());` },
+        { title: he ? '📋 Endpoints' : '📋 Endpoints', run: 'help',
+          code: `POST /api/v1/scan/file          ${he ? 'סריקת קובץ' : 'scan uploaded file'}\nPOST /api/v1/scan/url?url=...   ${he ? 'סריקת URL' : 'scan a URL'}\nGET  /api/v1/scan/{id}          ${he ? 'תוצאת סריקה' : 'get scan result'}\nPOST /api/v1/feedback/{id}      ${he ? 'משוב על דיוק' : 'accuracy feedback'}\nGET  /api/v1/stats              ${he ? 'סטטיסטיקות' : 'overview stats'}\nGET  /api/v1/stats/providers    ${he ? 'מדדי ספקים' : 'provider metrics'}\nGET  /api/v1/stats/history      ${he ? 'היסטוריה' : 'scan history'}\nPOST /api/v1/admin/tokens       ${he ? 'יצירת טוקן (master)' : 'create token (master)'}\nGET  /health                    ${he ? 'בדיקת תקינות' : 'health check'}` },
+    ];
+
+    return (
+        <div className={`flex ${termOpen ? 'gap-4' : ''} transition-all`}>
+            {/* Left: Docs */}
+            <div className={`space-y-6 ${termOpen ? 'w-1/2' : 'w-full'} transition-all`}>
+                {/* Hero */}
+                <div className="card p-8 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                    <div className="text-4xl mb-3">📚</div>
+                    <h2 className="text-2xl font-bold" style={{ fontFamily: 'Playfair Display, serif' }}>API {he ? 'תיעוד' : 'Documentation'}</h2>
+                    <p className="text-muted text-sm mt-2">{he ? 'לחצו "▶ בדוק" כדי לנסות בטרמינל בצד' : 'Click "▶ Test" to try in the side terminal'}</p>
+                    {!termOpen && <button className="btn btn-blue mt-4 text-sm" onClick={() => { setTermOpen(true); runInTerminal('help'); }}>🖥 {he ? 'פתח טרמינל' : 'Open Terminal'}</button>}
+                </div>
+
+                {/* Code examples as cards grid */}
+                <div className={`grid ${termOpen ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-4`}>
+                    {codeExamples.map((s, i) => (
+                        <div key={i} className="card p-5 flex flex-col">
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-lg">{s.run === 'help' ? '📋' : '💻'}</span>
+                                <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{s.title}</h4>
+                            </div>
+                            {s.content && <div className="text-muted text-sm mb-3">{s.content}</div>}
+                            <div className="flex-1">
+                                <CopyBlock text={s.code}><pre className="whitespace-pre-wrap break-all text-[11px]" style={{ margin: 0, background: 'none' }}>{s.code}</pre></CopyBlock>
+                            </div>
+                            <button className="btn btn-blue text-xs mt-3 self-start" onClick={() => s.run === 'help' ? runInTerminal('help') : runExample(s.title)}>
+                                ▶ {he ? 'בדוק' : 'Test'}
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Right: Terminal */}
+            {termOpen && (
+                <div className="w-1/2 sticky top-4 self-start fade-in">
+                    <div className="card overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 120px)', maxHeight: '80vh' }}>
+                        <div className="px-4 py-3 flex justify-between items-center border-b border-line shrink-0" style={{ background: '#1A1A1A' }}>
+                            <span className="text-sm font-medium text-gray-300">🖥 Terminal <span className="text-gold text-xs">(sandbox)</span></span>
+                            <div className="flex gap-3">
+                                <button className="text-xs text-gray-500 hover:text-gray-300" onClick={() => setTermLog([])}>Clear</button>
+                                <button className="text-xs text-gray-500 hover:text-gray-300" onClick={() => setTermOpen(false)}>✕</button>
+                            </div>
+                        </div>
+                        <div ref={termRef} className="p-3 overflow-y-auto overflow-x-hidden font-mono text-xs flex-1 min-h-0" style={{ background: '#1A1A1A', wordBreak: 'break-all' }}>
+                            {termLog.length === 0 && <div className="text-line">Type "help" or click "Test" on a code example.{'\n'}Upload a file with 📎 to scan it.</div>}
+                            {termLog.map((l, i) => (
+                                <div key={i} className={`${termColors[l.type] || 'text-muted'} whitespace-pre-wrap mb-1 break-all ${l.type === 'json' ? 'max-h-40 overflow-y-auto overflow-x-auto text-[10px]' : ''}`}>{l.text}</div>
+                            ))}
+                            {loading && <div className="text-gold-dark animate-pulse">⏳ Running...</div>}
+                        </div>
+                        <div className="border-t border-line p-2 flex gap-2 shrink-0" style={{ background: '#1A1A1A' }}>
+                            <label className="btn btn-gray text-xs cursor-pointer px-2">
+                                📎
+                                <input type="file" accept="image/*,video/*" className="hidden" onChange={e => e.target.files[0] && handleFileUpload(e.target.files[0])} />
+                            </label>
+                            <input className="flex-1 bg-transparent border border-line rounded px-2 py-1 text-xs text-ink font-mono focus:outline-none focus:border-blue-500"
+                                placeholder={he ? 'הקלד פקודה... (help לעזרה)' : 'Type command... (help for commands)'}
+                                value={termInput} onChange={e => setTermInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && termInput.trim()) { runInTerminal(termInput.trim()); setTermInput(''); } }} />
+                            <button className="btn btn-blue text-xs px-3" disabled={loading} onClick={() => { if (termInput.trim()) { runInTerminal(termInput.trim()); setTermInput(''); } }}>▶</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function SshTunnelCard({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [info, setInfo] = useState(null);
+    useEffect(() => { api.fetchApi('/api/v1/server-info').then(setInfo).catch(()=>{}); }, []);
+    const user = info?.user || 'USER';
+    const ip = info?.ip || 'YOUR_SERVER_IP';
+    const port = info?.port || 1985;
+    const sshCmd = `ssh -L ${port}:localhost:${port} ${user}@${ip}`;
+    const dashUrl = `http://localhost:${port}/dashboard`;
+    const detected = info?.user && info?.ip;
+
+    return (
+        <div className="card p-6">
+            <h3 className="font-bold text-ink mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>🔒 {he ? 'גישה מרחוק בלי דומיין' : 'Remote Access Without a Domain'}</h3>
+            <p className="text-muted text-sm mb-4">{he
+                ? 'אם אין לכם דומיין, אפשר לגשת לדשבורד מכל מקום דרך SSH tunnel — מאובטח, בלי לפתוח פורטים.'
+                : 'No domain? Access the dashboard from anywhere via SSH tunnel — secure, no ports exposed.'}</p>
+            {detected && <p className="text-green-600 text-xs mb-3">✅ {he ? `זוהה אוטומטית: משתמש ${user}, IP ${ip}` : `Auto-detected: user ${user}, IP ${ip}`}</p>}
+            <div className="space-y-4">
+                <div>
+                    <p className="text-sm text-muted mb-1 font-medium">{he ? 'שלב 1: הריצו מהמחשב שלכם' : 'Step 1: Run from your computer'}</p>
+                    <CopyBlock text={sshCmd}><span className="text-green-500">{sshCmd}</span></CopyBlock>
+                </div>
+                <div>
+                    <p className="text-sm text-muted mb-1 font-medium">{he ? 'שלב 2: פתחו בדפדפן' : 'Step 2: Open in browser'}</p>
+                    <CopyBlock text={dashUrl}><a href={dashUrl} target="_blank" className="text-gold-dark hover:text-gold">{dashUrl}</a></CopyBlock>
+                </div>
+                <div className="bg-warm rounded-lg p-4 text-sm text-muted">
+                    <p className="font-medium text-ink mb-2">💡 {he ? 'טיפים' : 'Tips'}</p>
+                    {!detected && <p>{he ? '• החליפו USER בשם המשתמש שלכם בשרת' : '• Replace USER with your server username'}</p>}
+                    <p>{he ? '• ב-Windows: השתמשו ב-PowerShell או PuTTY' : '• On Windows: use PowerShell or PuTTY'}</p>
+                    <p>{he ? '• ה-tunnel פעיל כל עוד חלון ה-SSH פתוח' : '• The tunnel stays active while the SSH window is open'}</p>
+                    <p>{he ? '• לגישה קבועה — חברו דומיין למעלה' : '• For permanent access — connect a domain above'}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ========== DOMAIN SETUP ========== */
+function TelegramVerify({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [tgStatus, setTgStatus] = useState(null);
+    const [botToken, setBotToken] = useState('');
+    const [verifyData, setVerifyData] = useState(null);
+    const [checking, setChecking] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [fieldErr, setFieldErr] = useState(false);
+
+    useEffect(() => { api.fetchApi('/api/v1/admin/telegram/status').then(setTgStatus).catch(() => {}); }, []);
+
+    const startVerify = async () => {
+        if (!botToken.trim()) { setFieldErr(true); return; }
+        setFieldErr(false);
+        setMsg(he ? '⏳ בודק טוקן...' : '⏳ Validating token...');
+        const res = await api.postApi('/api/v1/admin/telegram/start-verify', { bot_token: botToken });
+        if (res.status === 'ok') {
+            setVerifyData(res);
+            setMsg('');
+        } else {
+            setMsg(`❌ ${res.message}`);
+        }
+    };
+
+    const checkVerify = async () => {
+        if (!verifyData) return;
+        setChecking(true);
+        const res = await api.postApi('/api/v1/admin/telegram/check-verify', { code: verifyData.code });
+        if (res.status === 'verified') {
+            setMsg(`✅ ${he ? 'אומת!' : 'Verified!'} @${res.admin_user}`);
+            setVerifyData(null);
+            api.fetchApi('/api/v1/admin/telegram/status').then(setTgStatus);
+        } else if (res.status === 'waiting') {
+            setMsg(he ? '⏳ הקוד עדיין לא התקבל. שלחו אותו לבוט.' : '⏳ Code not received yet. Send it to the bot.');
+        } else {
+            setMsg(`❌ ${res.message}`);
+        }
+        setChecking(false);
+    };
+
+    return (
+        <div className="card p-4">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="font-medium">🤖 {he ? 'אימות טלגרם' : 'Telegram Verification'}</h3>
+                {tgStatus?.verified && <span className="px-2 py-0.5 rounded text-xs text-white badge-safe">{he ? 'מאומת' : 'Verified'}</span>}
+            </div>
+            <p className="text-muted/70 text-xs mb-3">{he
+                ? 'חברו בוט טלגרם לקבלת התראות ואימות בעלות על הדומיין.'
+                : 'Connect a Telegram bot for alerts and domain ownership verification.'}</p>
+
+            {tgStatus?.verified ? (
+                <div className="text-sm text-muted">
+                    <div className="detail-row"><span className="detail-label">Bot</span><span className="detail-value">@{tgStatus.bot_username}</span></div>
+                    <div className="detail-row"><span className="detail-label">Admin</span><span className="detail-value">@{tgStatus.admin_user}</span></div>
+                </div>
+            ) : !verifyData ? (
+                <div className="space-y-2">
+                    <p className="text-muted text-xs">{he
+                        ? <>1. צרו בוט ב-<a href="https://t.me/BotFather" target="_blank" className="text-gold-dark">@BotFather</a> 2. הדביקו את הטוקן</>
+                        : <>1. Create a bot via <a href="https://t.me/BotFather" target="_blank" className="text-gold-dark">@BotFather</a> 2. Paste the token</>}</p>
+                    <div>
+                        <input className={`input ${fieldErr ? 'border-red-500' : ''}`} placeholder="123456:ABCdef..." value={botToken}
+                            onChange={e => { setBotToken(e.target.value); setFieldErr(false); }} dir="ltr" />
+                        {fieldErr && <p className="text-red-600 text-xs mt-0.5">{he ? 'שדה חובה' : 'Required'}</p>}
+                    </div>
+                    <button className="btn btn-green" onClick={startVerify}>{he ? 'אמת' : 'Verify'}</button>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <div className="bg-warm rounded p-3 text-center">
+                        <p className="text-muted text-sm mb-2">{he ? 'שלחו את הקוד הזה לבוט:' : 'Send this code to the bot:'}</p>
+                        <p className="text-3xl font-bold text-gold-dark font-mono select-all">{verifyData.code}</p>
+                        <a href={`https://t.me/${verifyData.bot_username}`} target="_blank" className="text-gold-dark text-sm mt-2 inline-block">
+                            → @{verifyData.bot_username}
+                        </a>
+                    </div>
+                    <button className={`btn btn-blue w-full ${checking ? 'opacity-50' : ''}`} disabled={checking} onClick={checkVerify}>
+                        {checking ? '⏳' : '🔍'} {he ? 'בדוק אם הקוד התקבל' : 'Check if code received'}
+                    </button>
+                </div>
+            )}
+
+            {msg && <div className="text-sm mt-2">{msg}</div>}
+        </div>
+    );
+}
+
+function DomainTab({ api, i18n }) {
+    const [config, setConfig] = useState(null);
+    const [mode, setMode] = useState('domain');
+    const [domain, setDomain] = useState('');
+    const [baseDomain, setBaseDomain] = useState('');
+    const [pathPrefix, setPathPrefix] = useState('');
+    const [cfToken, setCfToken] = useState('');
+    const [dns, setDns] = useState(null);
+    const [status, setStatus] = useState('');
+    const [step, setStep] = useState(1);
+
+    const he = i18n.lang === 'he';
+
+    useEffect(() => {
+        api.fetchApi('/api/v1/admin/domain').then(d => {
+            setConfig(d);
+            if (d.domain) { setDomain(d.domain); setStep(3); }
+        }).catch(() => {});
+    }, []);
+
+    const detectDns = async () => {
+        if (!domain.trim()) return;
+        // If user entered a path like example.com/path, switch to path mode
+        if (domain.includes('/')) {
+            const parts = domain.split('/');
+            setBaseDomain(parts[0]);
+            setPathPrefix(parts.slice(1).join('/'));
+            setMode('path');
+            setDomain('');
+            return;
+        }
+        setStatus(he ? '🔍 סורק DNS...' : '🔍 Detecting DNS...');
+        const res = await api.postApi('/api/v1/admin/domain/detect-dns', { domain });
+        setDns(res);
+        setStep(2);
+        setStatus('');
+    };
+
+    const setupAuto = async () => {
+        if (!cfToken.trim()) { setStatus('⚠️ Cloudflare token required'); setTimeout(() => setStatus(''), 3000); return; }
+        setStatus(he ? '🔄 מגדיר DNS...' : '🔄 Setting up DNS...');
+        const res = await api.postApi('/api/v1/admin/domain/setup-dns', { domain, cloudflare_token: cfToken });
+        if (res.status === 'ok') {
+            setStatus(`✅ DNS ${res.action}! ${domain} → ${res.ip}`);
+            setupNginx();
+        } else {
+            setStatus(`❌ ${res.message}`);
+        }
+    };
+
+    const setupNginx = async () => {
+        setStatus(s => s + (he ? '\n🔄 מגדיר nginx + SSL...' : '\n🔄 Setting up nginx + SSL...'));
+        const res = await api.postApi('/api/v1/admin/domain/setup-nginx', { domain });
+        if (res.status === 'ok') {
+            setStatus(`✅ ${he ? 'הכל מוגדר!' : 'All configured!'} https://${domain}/dashboard`);
+            setStep(3);
+        } else if (res.status === 'manual_required' || res.manual) {
+            setStatus(`⚠️ ${he ? 'נדרשת הרצה ידנית:' : 'Manual setup required:'}\n${res.command || res.manual}`);
+            setStep(3);
+        } else {
+            setStatus(`❌ ${res.message}`);
+        }
+    };
+
+    const disconnect = async () => {
+        await api.postApi('/api/v1/admin/domain/setup-dns', { domain: '', cloudflare_token: '' });
+        setDomain(''); setDns(null); setStep(1); setCfToken(''); setConfig(null);
+        setStatus(he ? '🔌 דומיין נותק' : '🔌 Domain disconnected');
+        setTimeout(() => setStatus(''), 3000);
+    };
+
+    if (!config) return <div className="text-muted py-8 text-center">{i18n.t('loading')}</div>;
+
+    const providerNames = {
+        cloudflare: 'Cloudflare', route53: 'Amazon Route53', google: 'Google Domains',
+        godaddy: 'GoDaddy', namecheap: 'Namecheap', unknown: he ? 'לא זוהה' : 'Unknown',
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-3xl mb-2">🌐</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'חיבור דומיין' : 'Connect Domain'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'חברו את SafeEye לדומיין שלכם לגישה מכל מקום' : 'Connect SafeEye to your domain for access from anywhere'}</p>
+            </div>
+            {/* Server info */}
+            <div className="card p-5">
+                <div className="detail-row"><span className="detail-label">Server IP</span><span className="detail-value font-mono">{config.server_ip}</span></div>
+                <div className="detail-row"><span className="detail-label">Port</span><span className="detail-value">{config.port}</span></div>
+                {config.domain && <div className="detail-row"><span className="detail-label">{he ? 'דומיין פעיל' : 'Active domain'}</span><span className="detail-value text-green-600">{config.domain}</span></div>}
+            </div>
+
+            {step === 3 && config.domain ? (
+                /* Connected state */
+                <div className="card p-4">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="font-medium">🌐 {config.domain}</span>
+                        <span className="px-2 py-0.5 rounded text-xs text-white badge-safe">{he ? 'מחובר' : 'Connected'}</span>
+                    </div>
+                    <div className="space-y-1 text-sm text-muted mb-3" dir="ltr">
+                        <div>Dashboard: <a href={`https://${config.domain}/dashboard`} target="_blank" className="text-gold-dark">https://{config.domain}/dashboard</a></div>
+                        <div>API: <span className="text-ink">https://{config.domain}/api/v1/</span></div>
+                    </div>
+                    <button className="btn btn-red text-xs" onClick={disconnect}>🔌 {he ? 'נתק דומיין' : 'Disconnect domain'}</button>
+                </div>
+            ) : (
+                /* Setup flow */
+                <div className="card p-4">
+                    <h3 className="font-medium mb-1">🌐 {he ? 'חיבור דומיין' : 'Connect Domain'}</h3>
+                    <p className="text-muted/70 text-xs mb-4">{he
+                        ? 'חברו את SafeEye לדומיין שלכם כדי לגשת לדשבורד ול-API מכל מקום עם HTTPS.'
+                        : 'Connect SafeEye to your domain to access the dashboard and API from anywhere with HTTPS.'}</p>
+
+                    {/* Mode selection */}
+                    <div className="flex gap-2 mb-3">
+                        <button className={`btn flex-1 text-xs ${mode === 'domain' ? 'btn-blue' : 'btn-gray'}`}
+                            onClick={() => { setMode('domain'); setStep(1); setDns(null); }}>
+                            🌐 {he ? 'דומיין / סאב-דומיין' : 'Domain / Subdomain'}
+                        </button>
+                        <button className={`btn flex-1 text-xs ${mode === 'path' ? 'btn-blue' : 'btn-gray'}`}
+                            onClick={() => { setMode('path'); setStep(1); setDns(null); }}>
+                            📁 {he ? 'נתיב בדומיין קיים' : 'Path on existing domain'}
+                        </button>
+                    </div>
+
+                    {mode === 'path' ? (
+                        /* Path mode: liviatchen.com/scanner */
+                        <div className="space-y-3">
+                            <p className="text-muted text-xs">{he
+                                ? 'הוסיפו את SafeEye כנתיב בדומיין שכבר מוגדר אצלכם בנגינקס (למשל: example.com/scanner).'
+                                : 'Add SafeEye as a path on a domain already configured in your nginx (e.g. example.com/scanner).'}</p>
+                            <input className="input" placeholder={he ? 'דומיין קיים (example.com)' : 'Existing domain (example.com)'}
+                                value={baseDomain} onChange={e => setBaseDomain(e.target.value)} dir="ltr" />
+                            <div className="flex items-center gap-1" dir="ltr">
+                                <span className="text-muted/70 text-sm">{baseDomain || 'example.com'} /</span>
+                                <input className="input flex-1" placeholder={he ? 'נתיב (scanner)' : 'path (scanner)'}
+                                    value={pathPrefix} onChange={e => setPathPrefix(e.target.value.replace(/^\//, ''))} dir="ltr" />
+                            </div>
+                            {baseDomain && pathPrefix && (
+                                <div className="fade-in">
+                                    <p className="text-muted text-xs mb-2">{he ? 'הוסיפו לקונפיגורציית nginx של הדומיין:' : 'Add to your domain\'s nginx config:'}</p>
+                                    <div className="bg-ink rounded p-3 font-mono text-xs text-gray-300 mb-2 overflow-x-auto" dir="ltr">
+                                        <pre>{`location /${pathPrefix} {
+    proxy_pass http://127.0.0.1:${config.port}/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 50M;
+}`}</pre>
+                                    </div>
+                                    <p className="text-muted/70 text-xs mb-2">{he ? 'ואז:' : 'Then:'} <code className="text-muted">sudo nginx -t && sudo nginx -s reload</code></p>
+                                    <button className="btn btn-green w-full" onClick={async () => {
+                                        const full = `${baseDomain}/${pathPrefix}`;
+                                        await api.postApi('/api/v1/admin/domain/setup-dns', { domain: full, cloudflare_token: '' });
+                                        setStatus(`✅ ${he ? 'נשמר!' : 'Saved!'} https://${full}/dashboard`);
+                                        setStep(3); setDomain(full);
+                                        api.fetchApi('/api/v1/admin/domain').then(setConfig);
+                                    }}>
+                                        💾 {he ? 'שמור הגדרה' : 'Save config'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        /* Domain mode */
+                        <div>
+                            {/* Step 1: Enter domain */}
+                            <p className="text-muted text-xs mb-2">{he
+                                ? 'הכניסו דומיין או סאב-דומיין (למשל: scanner.example.com).'
+                                : 'Enter a domain or subdomain (e.g. scanner.example.com).'}</p>
+                            <div className="flex gap-2 mb-3">
+                                <input className="input flex-1" placeholder="scanner.example.com"
+                                    value={domain} onChange={e => setDomain(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && detectDns()} dir="ltr" />
+                                <button className="btn btn-blue" onClick={detectDns}>{he ? 'סרוק' : 'Detect'}</button>
+                            </div>
+
+                            {/* Step 2: DNS detected */}
+                            {dns && step >= 2 && (
+                                <div className="fade-in space-y-3">
+                                    <div className="bg-warm rounded p-3 text-sm">
+                                        <div className="detail-row"><span className="detail-label">DNS Provider</span><span className="detail-value">{providerNames[dns.provider] || dns.provider}</span></div>
+                                        <div className="detail-row"><span className="detail-label">NS Records</span><span className="detail-value text-xs font-mono">{(dns.ns_records||[]).join(', ') || '-'}</span></div>
+                                    </div>
+
+                                    {dns.auto_dns_supported ? (
+                                        <div>
+                                            <p className="text-green-600 text-sm mb-2">✅ {he ? 'Cloudflare זוהה! ניתן להגדיר אוטומטית.' : 'Cloudflare detected! Auto-setup available.'}</p>
+                                            <input className="input mb-2" type="password" dir="ltr"
+                                                placeholder="Cloudflare API Token (Edit zone DNS)"
+                                                value={cfToken} onChange={e => setCfToken(e.target.value)} />
+                                            <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener"
+                                                className="text-gold-dark hover:text-gold text-xs mb-2 inline-block">
+                                                {he ? '→ צור API Token ב-Cloudflare' : '→ Create API Token in Cloudflare'}
+                                            </a>
+                                            <button className="btn btn-green w-full" onClick={setupAuto}>
+                                                ⚡ {he ? 'הגדר אוטומטית (DNS + Nginx + SSL)' : 'Auto Setup (DNS + Nginx + SSL)'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <p className="text-amber-600 text-sm mb-2">📋 {he ? 'הגדרה ידנית — הוסיפו רשומת A:' : 'Manual setup — add an A record:'}</p>
+                                            <div className="bg-ink rounded p-3 font-mono text-sm text-gray-300 mb-2" dir="ltr">
+                                                <div>Type: <b>A</b></div>
+                                                <div>Name: <b>{domain}</b></div>
+                                                <div>Value: <b>{config.server_ip}</b></div>
+                                                <div>TTL: <b>Auto</b></div>
+                                            </div>
+                                            <p className="text-muted/70 text-xs mb-2">{he ? 'אחרי שהוספתם את הרשומה, בחרו:' : 'After adding the record, choose:'}</p>
+                                            <div className="flex gap-2">
+                                                <button className="btn btn-green flex-1" onClick={setupNginx}>
+                                                    🔧 {he ? 'Nginx + SSL' : 'Nginx + SSL'}
+                                                </button>
+                                                <button className="btn btn-blue flex-1" onClick={async () => {
+                                                    const res = await api.postApi('/api/v1/admin/domain/setup-direct', { domain });
+                                                    if (res.status === 'ok') {
+                                                        setStatus(`✅ ${he ? 'נשמר!' : 'Saved!'}\n${res.access_url}`);
+                                                        setStep(3);
+                                                        api.fetchApi('/api/v1/admin/domain').then(setConfig);
+                                                    } else setStatus(`❌ ${res.message}`);
+                                                }}>
+                                                    🌐 {he ? 'ישיר (בלי Nginx)' : 'Direct (no Nginx)'}
+                                                </button>
+                                            </div>
+                                            <p className="text-line text-xs mt-2">{he
+                                                ? '💡 "ישיר" — DNS בלבד, גישה דרך http://domain:port. מתאים ל-VPS בלי nginx.'
+                                                : '💡 "Direct" — DNS only, access via http://domain:port. For VPS without nginx.'}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {status && <div className="card p-3 text-sm whitespace-pre-line">{status}</div>}
+
+            <TelegramVerify api={api} i18n={i18n} />
+
+            {/* SSH Tunnel — auto-detect user+IP */}
+            <SshTunnelCard api={api} i18n={i18n} />
+        </div>
+    );
+}
+
+/* ========== APP ========== */
+function UpdateBanner({ api, i18n }) {
+    const [update, setUpdate] = useState(null);
+    const [dismissed, setDismissed] = useState(false);
+    const he = i18n.lang === 'he';
+    useEffect(() => {
+        // Silent background check on load
+        api.fetchApi('/api/v1/admin/check-update').then(data => {
+            if (data.status === 'ok' && data.remote_sha) {
+                const lastSeen = localStorage.getItem('safeeye_last_sha');
+                if (lastSeen !== data.remote_sha) setUpdate(data);
+            }
+        }).catch(() => {});
+    }, []);
+    if (!update || dismissed) return null;
+    return (
+        <div style={{ background: '#FFF8E1', border: '1px solid #C9A962', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', direction: 'ltr' }}>
+            <div>
+                <span style={{ fontWeight: 600, color: '#A68B4B' }}>🔄 {he ? 'גרסה חדשה זמינה!' : 'New version available!'}</span>
+                <span style={{ color: '#7A7A7A', fontSize: '0.8rem', marginLeft: '8px' }}>{update.remote_sha} — {update.remote_message?.substring(0, 50)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-blue text-xs" onClick={() => { setDismissed(true); localStorage.setItem('safeeye_last_sha', update.remote_sha); window.location.hash = 'about'; }}>
+                    {he ? 'עדכון' : 'Update'}
+                </button>
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A7A7A' }} onClick={() => { setDismissed(true); localStorage.setItem('safeeye_last_sha', update.remote_sha); }}>✕</button>
+            </div>
+        </div>
+    );
+}
+
+function App() {
+    const api = useApi();
+    const i18n = useI18n();
+    const [tab, setTabState] = useState(window.location.hash.replace('#','') || 'overview');
+    const setTab = (t) => { setTabState(t); window.location.hash = t; };
+    const [authed, setAuthed] = useState(!!api.token);
+
+    useEffect(() => { setAuthed(!!api.token); }, [api.token]);
+    useEffect(() => { document.documentElement.lang = i18n.lang; }, [i18n.lang]);
+
+    if (!authed) return <LoginScreen onLogin={(t) => { api.saveToken(t); setAuthed(true); }} i18n={i18n} />;
+
+    const tabs = [
+        { id: 'overview', label: i18n.lang === 'he' ? 'דשבורד' : 'Dashboard', icon: '📊' },
+        { id: 'history', label: i18n.t('history'), icon: '📋' },
+        { id: 'providers', label: i18n.t('providers'), icon: '⚙️' },
+        { id: 'tokens', label: i18n.t('tokens'), icon: '🔑' },
+        { id: 'integrations', label: i18n.t('integrations'), icon: '🔗' },
+        { id: 'docs', label: 'API', icon: '📚' },
+        { id: 'domain', label: i18n.lang === 'he' ? 'דומיין' : 'Domain', icon: '🌐' },
+        { id: 'report', label: i18n.t('report'), icon: '📝' },
+        { id: 'about', label: i18n.t('about'), icon: '💡' },
+    ];
+
+    return (
+        <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6" dir="ltr">
+            <div className="flex justify-between items-center mb-4 sm:mb-6 px-1">
+                <div className="flex items-center gap-2">
+                    <span className="text-xl sm:text-2xl">🛡️</span>
+                    <h1 className="text-lg sm:text-xl font-bold">{i18n.t('title')}</h1>
+                    <span className="text-xs text-line hidden sm:inline">v{VERSION}</span>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3">
+                    <ThemeToggle />
+                    <LangSwitch i18n={i18n} />
+                    <button className="text-muted hover:text-ink text-xs sm:text-sm" onClick={() => { api.clearToken(); setAuthed(false); }}>{i18n.t('logout')}</button>
+                </div>
+            </div>
+            <div dir="ltr" style={{ display: 'flex', flexDirection: 'row', direction: 'ltr', unicodeBidi: 'embed', gap: '0px', borderBottom: '1px solid #E5E2DD', marginBottom: '16px', padding: '0 4px', overflowX: 'auto' }}>
+                {tabs.map(t => (
+                    <button key={t.id} style={{ flex: 1, textAlign: 'center', paddingBottom: '8px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', border: 'none', background: 'none', borderBottom: tab === t.id ? '2px solid #C9A962' : '2px solid transparent', color: tab === t.id ? '#A68B4B' : '#7A7A7A' }}
+                        onClick={() => setTab(t.id)}>
+                        <div style={{ fontSize: '1rem' }}>{t.icon}</div>
+                        <div>{t.label}</div>
+                    </button>
+                ))}
+            </div>
+            <UpdateBanner api={api} i18n={i18n} />
+            <div className="content-bidi" data-dir={i18n.isRtl ? 'rtl' : 'ltr'}>
+            {tab === 'overview' && <OverviewTab api={api} i18n={i18n} />}
+            {tab === 'providers' && <ProvidersTab api={api} i18n={i18n} />}
+            {tab === 'history' && <HistoryTab api={api} i18n={i18n} />}
+            {tab === 'tokens' && <TokensTab api={api} i18n={i18n} />}
+            {tab === 'integrations' && <IntegrationsTab api={api} i18n={i18n} />}
+            {tab === 'docs' && <ApiDocsTab api={api} i18n={i18n} onNavigate={setTab} />}
+            {tab === 'domain' && <DomainTab api={api} i18n={i18n} />}
+            {tab === 'report' && <ReportTab api={api} i18n={i18n} />}
+            {tab === 'about' && <AboutTab api={api} i18n={i18n} />}
+            </div>
+        </div>
+    );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

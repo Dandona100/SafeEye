@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 400px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: #1e293b;
+      background: #f8fafc;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h1 img { width: 22px; height: 22px; }
+
+    .field {
+      margin-bottom: 14px;
+    }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 4px;
+      color: #334155;
+    }
+    label .hint {
+      font-weight: 400;
+      color: #94a3b8;
+      font-size: 11px;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: monospace;
+      background: #fff;
+      transition: border-color 0.15s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 18px;
+    }
+    button {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary {
+      background: #6366f1;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-test {
+      background: #e2e8f0;
+      color: #334155;
+    }
+    .btn-test:hover { background: #cbd5e1; }
+
+    .status {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.ok {
+      display: block;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
+    }
+    .status.fail {
+      display: block;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+    }
+  </style>
+</head>
+<body>
+  <h1><img src="icon.png" alt=""> SafeEye Settings</h1>
+
+  <div class="field">
+    <label>Server URL <span class="hint">(your SafeEye instance)</span></label>
+    <input type="text" id="serverUrl" placeholder="http://localhost:1985">
+  </div>
+
+  <div class="field">
+    <label>API Token <span class="hint">(required)</span></label>
+    <input type="password" id="apiToken" placeholder="se_...">
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="saveBtn">Save</button>
+    <button class="btn-test" id="testBtn">Test Connection</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
