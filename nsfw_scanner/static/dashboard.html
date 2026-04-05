@@ -491,7 +491,7 @@ function ProvidersTab({ api, i18n }) {
 
     useEffect(() => {
         api.fetchApi('/api/v1/stats/providers').then(setData).catch(() => {});
-        fetch(api.baseUrl + '/health').then(r => r.json()).then(setHealth).catch(() => {});
+        fetch(API + '/health').then(r => r.json()).then(setHealth).catch(() => {});
     }, []);
 
     useEffect(() => {
