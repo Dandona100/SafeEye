@@ -8,17 +8,18 @@ import json as _json
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Query, BackgroundTasks, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-VERSION = "6.0.0"
+VERSION = "6.1.0"
 
 from nsfw_scanner import db as database
 from nsfw_scanner import auth, stats
 from nsfw_scanner.scanner import scan_file, get_active_providers, compute_phash
 from nsfw_scanner.vector_store import VectorStore
+from nsfw_scanner.gossip import gossip_node
 from nsfw_scanner.stream_monitor import (
     start_monitor, stop_monitor, get_all_monitors,
 )
@@ -291,6 +292,12 @@ async def lifespan(app: FastAPI):
     if saved_config:
         logger.info(f"Restored {len(saved_config)} provider config keys from DB")
 
+    # Restore disabled providers
+    disabled_str = saved_config.get("DISABLED_PROVIDERS", "")
+    if disabled_str:
+        from nsfw_scanner.scanner import load_disabled_providers
+        load_disabled_providers(set(disabled_str.split(",")))
+
     # Preload NudeNet model to avoid cold-start on first request
     try:
         from nsfw_scanner.providers.nudenet_provider import _get_detector
@@ -308,6 +315,16 @@ async def lifespan(app: FastAPI):
         logger.info(f"Vector store loaded with {len(_vector_store)} pHash entries")
     except Exception as e:
         logger.warning(f"Vector store preload failed: {e}")
+
+    # Start Gossip P2P
+    gossip_enabled = saved_config.get("GOSSIP_ENABLED", "0") == "1"
+    gossip_secret = saved_config.get("GOSSIP_SECRET", "")
+    gossip_peers = [p for p in saved_config.get("GOSSIP_PEERS", "").split(",") if p.strip()]
+    if gossip_enabled and gossip_secret:
+        gossip_node.configure(True, gossip_secret, gossip_peers)
+        gossip_node.on_hash(lambda rec: database.import_hash_metadata([rec], "gossip"))
+        await gossip_node.start()
+        logger.info(f"Gossip P2P started with {len(gossip_peers)} peers")
 
     # Start periodic cleanup task
     import asyncio
@@ -395,12 +412,15 @@ app = FastAPI(
 )
 
 # ========== CORS ==========
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# When behind Nginx that already sets Access-Control-Allow-Origin,
+# skip the middleware to avoid duplicate headers (browsers reject double origins).
+if not os.environ.get("BEHIND_NGINX"):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ========== Concurrent Scan Limit ==========
 MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "10"))
@@ -1317,6 +1337,78 @@ async def disconnect_provider(body: dict, authorization: str = Header(None)):
     return {"status": "ok", "provider": provider_name, "active": get_active_providers()}
 
 
+@app.get("/api/v1/admin/providers/status")
+async def providers_status(authorization: str = Header(None)):
+    """Get all providers with active/disabled/configured status."""
+    await require_token(authorization)
+    from nsfw_scanner.scanner import get_all_providers_status
+    return get_all_providers_status()
+
+
+@app.post("/api/v1/admin/providers/disable")
+async def disable_provider(body: dict, authorization: str = Header(None)):
+    await require_master(authorization)
+    name = body.get("provider", "")
+    if not name:
+        raise HTTPException(400, "provider required")
+    from nsfw_scanner.scanner import _disabled_providers
+    _disabled_providers.add(name)
+    # Persist
+    await database.save_provider_config("DISABLED_PROVIDERS",
+        ",".join(_disabled_providers))
+    return {"status": "ok", "disabled": name, "active": get_active_providers()}
+
+
+@app.post("/api/v1/admin/providers/enable")
+async def enable_provider(body: dict, authorization: str = Header(None)):
+    await require_master(authorization)
+    name = body.get("provider", "")
+    if not name:
+        raise HTTPException(400, "provider required")
+    from nsfw_scanner.scanner import _disabled_providers
+    _disabled_providers.discard(name)
+    await database.save_provider_config("DISABLED_PROVIDERS",
+        ",".join(_disabled_providers))
+    return {"status": "ok", "enabled": name, "active": get_active_providers()}
+
+
+@app.post("/api/v1/admin/providers/install")
+async def install_provider(body: dict, authorization: str = Header(None)):
+    """Install a local provider's pip dependencies."""
+    await require_master(authorization)
+    name = body.get("provider", "")
+    _INSTALL_MAP = {
+        "marqo_nsfw": "timm torch",
+        "falconsai_nsfw": "transformers torch",
+        "freepik_nsfw": "transformers torch",
+        "siglip_nsfw": "transformers torch",
+        "bumble_nsfw": "tensorflow",
+        "nsfwjs": "onnxruntime",
+        "deepfake_v2": "transformers torch",
+        "yolo_weapons": "ultralytics",
+        "detoxify": "detoxify",
+        "hatespeech": "transformers torch",
+    }
+    packages = _INSTALL_MAP.get(name)
+    if not packages:
+        raise HTTPException(400, f"Unknown provider or no install needed: {name}")
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["pip", "install", "--no-cache-dir"] + packages.split(),
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0:
+            return {"status": "error", "output": result.stderr[-500:]}
+        # Force re-check of providers
+        from nsfw_scanner import scanner
+        scanner._providers = None
+        return {"status": "ok", "provider": name, "output": result.stdout[-200:],
+                "active": get_active_providers()}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "output": "Installation timed out (5 min limit)"}
+
+
 # ========== GitHub Integration ==========
 
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
@@ -1915,6 +2007,264 @@ async def vote_community(report_id: str, body: dict):
     return await database.vote_community_report(report_id, device_uuid)
 
 
+# ========== Gossip P2P ==========
+
+from fastapi import WebSocket
+
+@app.websocket("/api/v1/gossip/ws")
+async def gossip_ws(ws: WebSocket):
+    """WebSocket endpoint for gossip P2P connections."""
+    await ws.accept()
+    if not gossip_node.enabled:
+        await ws.close(code=4003, reason="Gossip disabled")
+        return
+    await gossip_node.handle_incoming_ws(ws)
+
+
+@app.get("/api/v1/gossip/status")
+async def gossip_status(authorization: str = Header(None)):
+    await require_token(authorization)
+    return gossip_node.get_status()
+
+
+@app.post("/api/v1/gossip/configure")
+async def gossip_configure(body: dict, authorization: str = Header(None)):
+    """Configure gossip P2P. Master token required."""
+    await require_master(authorization)
+    enabled = body.get("enabled", False)
+    secret = body.get("secret", "")
+    peers = body.get("peers", [])
+
+    await database.save_provider_config("GOSSIP_ENABLED", "1" if enabled else "0")
+    if secret:
+        await database.save_provider_config("GOSSIP_SECRET", secret)
+    if peers is not None:
+        await database.save_provider_config("GOSSIP_PEERS", ",".join(peers))
+
+    # Restart gossip
+    await gossip_node.stop()
+    if enabled and secret:
+        gossip_node.configure(True, secret, peers)
+        gossip_node.on_hash(lambda rec: database.import_hash_metadata([rec], "gossip"))
+        await gossip_node.start()
+
+    return {"status": "ok", "gossip": gossip_node.get_status()}
+
+
+@app.post("/api/v1/gossip/add-peer")
+async def gossip_add_peer(body: dict, authorization: str = Header(None)):
+    await require_master(authorization)
+    url = body.get("url", "").strip()
+    if not url:
+        raise HTTPException(400, "url required")
+    # Save to config
+    saved = await database.load_all_provider_config()
+    existing = [p for p in saved.get("GOSSIP_PEERS", "").split(",") if p.strip()]
+    if url not in existing:
+        existing.append(url)
+        await database.save_provider_config("GOSSIP_PEERS", ",".join(existing))
+    # Add to running node
+    from nsfw_scanner.gossip import Peer
+    if url not in gossip_node.peers:
+        gossip_node.peers[url] = Peer(url=url, secret=gossip_node.shared_secret)
+        if gossip_node.enabled:
+            task = asyncio.create_task(gossip_node._connect_loop(gossip_node.peers[url]))
+            gossip_node._tasks.append(task)
+    return {"status": "ok", "peers": gossip_node.get_status()["peers"]}
+
+
+@app.post("/api/v1/gossip/remove-peer")
+async def gossip_remove_peer(body: dict, authorization: str = Header(None)):
+    await require_master(authorization)
+    url = body.get("url", "").strip()
+    if url in gossip_node.peers:
+        peer = gossip_node.peers.pop(url)
+        if peer.ws:
+            try:
+                await peer.ws.close()
+            except Exception:
+                pass
+    saved = await database.load_all_provider_config()
+    existing = [p for p in saved.get("GOSSIP_PEERS", "").split(",") if p.strip() and p.strip() != url]
+    await database.save_provider_config("GOSSIP_PEERS", ",".join(existing))
+    return {"status": "ok", "peers": gossip_node.get_status()["peers"]}
+
+
+@app.get("/api/v1/network/stats")
+async def network_stats():
+    """Anonymous network stats — no auth required."""
+    connected = sum(1 for p in gossip_node.peers.values() if p.connected)
+    return {
+        "active_servers": connected + (1 if gossip_node.enabled else 0),
+        "total_scans_network": gossip_node.network_stats.get("total_scans_network", 0),
+        "top_provider": gossip_node.network_stats.get("top_provider", ""),
+    }
+
+
+# ========== Telegram Auth (for domain access) ==========
+
+import secrets as _secrets
+import time as _time
+
+_tg_auth_codes: dict[str, dict] = {}  # username -> {code, expires, chat_id}
+
+@app.get("/api/v1/auth/mode")
+async def auth_mode(request: Request):
+    """Detect if login is required based on access method."""
+    host = request.headers.get("host", "")
+    # Local access: no auth needed
+    if any(host.startswith(h) for h in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")):
+        # Return master token for local access
+        master = os.environ.get("SCAN_API_MASTER_TOKEN", "")
+        return {"mode": "local", "token": master}
+    # Domain access: check if Telegram bot is configured
+    saved = await database.load_all_provider_config()
+    if saved.get("TELEGRAM_BOT_TOKEN") and saved.get("TELEGRAM_VERIFIED") == "true":
+        return {"mode": "telegram", "bot_username": saved.get("TELEGRAM_BOT_USERNAME", "")}
+    # Domain but no Telegram: fall back to token login
+    return {"mode": "token"}
+
+
+@app.post("/api/v1/auth/telegram/request")
+async def telegram_auth_request(body: dict):
+    """Send auth code to user via Telegram bot."""
+    username = body.get("username", "").strip().lstrip("@").lower()
+    if not username:
+        raise HTTPException(400, "username required")
+    saved = await database.load_all_provider_config()
+    bot_token = saved.get("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        raise HTTPException(503, "Telegram bot not configured")
+
+    # Generate 6-digit code
+    code = f"{_secrets.randbelow(900000) + 100000}"
+    _tg_auth_codes[username] = {"code": code, "expires": _time.time() + 300}  # 5 min
+
+    # Find chat_id by username from recent updates
+    import aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get updates to find chat_id for this username
+            async with session.get(
+                f"https://api.telegram.org/bot{bot_token}/getUpdates",
+                params={"limit": 100, "timeout": 1},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+
+            chat_id = None
+            for update in data.get("result", []):
+                msg = update.get("message", {})
+                user = msg.get("from", {})
+                if user.get("username", "").lower() == username:
+                    chat_id = msg["chat"]["id"]
+                    break
+
+            if not chat_id:
+                # Check if this is the admin user
+                admin_user = saved.get("TELEGRAM_ADMIN_USER", "").lower()
+                admin_chat = saved.get("TELEGRAM_ADMIN_CHAT_ID")
+                if username == admin_user and admin_chat:
+                    chat_id = admin_chat
+                else:
+                    raise HTTPException(404,
+                        f"User @{username} not found. Send /start to the bot first.")
+
+            _tg_auth_codes[username]["chat_id"] = str(chat_id)
+
+            # Send code via Telegram
+            async with session.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": f"🛡️ SafeEye login code:\n\n🔑 {code}\n\nExpires in 5 minutes."},
+            ) as resp:
+                if resp.status != 200:
+                    raise HTTPException(502, "Failed to send Telegram message")
+    except aiohttp.ClientError as e:
+        raise HTTPException(502, f"Telegram API error: {e}")
+
+    return {"status": "sent", "username": username}
+
+
+@app.post("/api/v1/auth/telegram/verify")
+async def telegram_auth_verify(body: dict):
+    """Verify the code and return a session token."""
+    username = body.get("username", "").strip().lstrip("@").lower()
+    code = body.get("code", "").strip()
+    if not username or not code:
+        raise HTTPException(400, "username and code required")
+
+    entry = _tg_auth_codes.get(username)
+    if not entry:
+        raise HTTPException(401, "No pending code for this user. Request a new one.")
+    if _time.time() > entry["expires"]:
+        del _tg_auth_codes[username]
+        raise HTTPException(401, "Code expired. Request a new one.")
+    if entry["code"] != code:
+        raise HTTPException(401, "Wrong code")
+
+    del _tg_auth_codes[username]
+
+    # Return master token for verified Telegram users
+    master = os.environ.get("SCAN_API_MASTER_TOKEN", "")
+    return {"status": "verified", "token": master, "username": username}
+
+
+# ========== Hash Metadata (client-side pre-scan) ==========
+
+@app.get("/api/v1/metadata/hashes")
+async def export_metadata():
+    """Export hash→result metadata for client-side matching.
+    Clients download this once, cache locally, and check before uploading."""
+    enabled = (await database.load_all_provider_config()).get("METADATA_SHARING", "0")
+    if enabled != "1":
+        raise HTTPException(403, "Metadata sharing is disabled on this server")
+    data = await database.export_hash_metadata()
+    return JSONResponse(data, headers={
+        "Cache-Control": "public, max-age=3600",
+    })
+
+
+@app.post("/api/v1/metadata/sync")
+async def sync_metadata(body: dict, _=Depends(require_master)):
+    """Import hash metadata from another SafeEye server. Master token required."""
+    source = body.get("source", "unknown")
+    records = body.get("records", [])
+    if not records:
+        raise HTTPException(400, "No records provided")
+    await database.import_hash_metadata(records, source)
+    return {"status": "ok", "imported": len(records)}
+
+
+@app.post("/api/v1/metadata/subscribe")
+async def subscribe_metadata(body: dict, _=Depends(require_master)):
+    """Subscribe to another SafeEye server's metadata. Fetches and imports."""
+    import aiohttp
+    server_url = body.get("url", "").rstrip("/")
+    if not server_url:
+        raise HTTPException(400, "url required")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{server_url}/api/v1/metadata/hashes", timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                if resp.status != 200:
+                    raise HTTPException(502, f"Remote server returned {resp.status}")
+                records = await resp.json()
+        await database.import_hash_metadata(records, server_url)
+        return {"status": "ok", "fetched": len(records), "source": server_url}
+    except aiohttp.ClientError as e:
+        raise HTTPException(502, f"Failed to reach server: {e}")
+
+
+@app.get("/api/v1/metadata/check/{phash}")
+async def check_hash(phash: str):
+    """Quick check: does this pHash exist in our database? No auth needed."""
+    similar = await database.find_similar_by_phash(phash, threshold=3, limit=1)
+    if similar:
+        hit = similar[0]
+        return {"match": True, "is_nsfw": bool(hit["is_nsfw"]), "confidence": hit["confidence"],
+                "labels": hit["labels"], "distance": hit["hamming_distance"]}
+    return {"match": False}
+
+
 # ========== Public Demo Endpoint ==========
 
 @app.post("/api/v1/demo/scan")
@@ -2066,8 +2416,6 @@ async def github_webhook(body: dict):
 
 _api_usage: dict = {}   # endpoint -> count
 _visitor_log: list = [] # last 500 visits (admin only)
-
-from fastapi import Request
 
 @app.middleware("http")
 async def track_analytics(request: Request, call_next):

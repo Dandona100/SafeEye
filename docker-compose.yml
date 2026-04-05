@@ -7,6 +7,8 @@ services:
       - "1985:1985"
     env_file:
       - .env
+    environment:
+      - BEHIND_NGINX=1
     volumes:
       - ./data:/app/data
       - /etc/nginx:/etc/nginx

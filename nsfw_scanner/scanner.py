@@ -112,8 +112,30 @@ def _get_providers():
     return _providers
 
 
+_disabled_providers: set[str] = set()
+
+
+def load_disabled_providers(disabled: set[str]):
+    """Load disabled provider names (called from app startup)."""
+    global _disabled_providers
+    _disabled_providers = disabled
+
+
 def get_active_providers() -> list[str]:
-    return [p.name for p in _get_providers() if p.is_configured()]
+    return [p.name for p in _get_providers() if p.is_configured() and p.name not in _disabled_providers]
+
+
+def get_all_providers_status() -> list[dict]:
+    """Return status of all providers with details."""
+    results = []
+    for p in _get_providers():
+        results.append({
+            "name": p.name,
+            "configured": p.is_configured(),
+            "disabled": p.name in _disabled_providers,
+            "active": p.is_configured() and p.name not in _disabled_providers,
+        })
+    return results
 
 
 async def scan_file(file_path: str) -> AggregatedResult:
@@ -134,7 +156,7 @@ async def scan_file(file_path: str) -> AggregatedResult:
 async def _scan_image_parallel(file_path: str) -> AggregatedResult:
     """Run all providers on a single image in parallel, aggregate."""
     scan_id = uuid.uuid4().hex[:16]
-    providers = [p for p in _get_providers() if p.is_configured()]
+    providers = [p for p in _get_providers() if p.is_configured() and p.name not in _disabled_providers]
 
     if not providers:
         return AggregatedResult(is_nsfw=False, scan_id=scan_id, providers_total=0)

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SafeEye Dashboard</title>
+    <title>SafeEyes Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -122,12 +122,73 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 const API = window.location.origin;
-const VERSION = "6.0.0";
+const VERSION = "6.1.0";
+const METADATA_API = 'https://lhflow.com:1985';
+
+// ========== Client-side pHash (dHash) ==========
+const ClientHash = {
+    compute(file) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 9; canvas.height = 8;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, 9, 8);
+                const data = ctx.getImageData(0, 0, 9, 8).data;
+                const pixels = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    pixels.push(Math.round(data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114));
+                }
+                const avg = pixels.reduce((a, b) => a + b, 0) / pixels.length;
+                const bits = pixels.map(p => p > avg ? '1' : '0').join('');
+                const hex = BigInt('0b' + bits).toString(16).padStart(Math.ceil(bits.length / 4), '0');
+                resolve(hex);
+                URL.revokeObjectURL(img.src);
+            };
+            img.onerror = () => resolve(null);
+            img.src = URL.createObjectURL(file);
+        });
+    },
+    _hamming(a, b) {
+        if (!a || !b || a.length !== b.length) return 999;
+        const x = BigInt('0x' + a) ^ BigInt('0x' + b);
+        let d = 0; let v = x;
+        while (v) { d++; v &= v - 1n; }
+        return d;
+    },
+    _cache: null,
+    _cacheTime: 0,
+    async getMetadata() {
+        const now = Date.now();
+        if (this._cache && now - this._cacheTime < 3600000) return this._cache;
+        try {
+            const res = await fetch(`${METADATA_API}/api/v1/metadata/hashes`);
+            if (!res.ok) return null;
+            this._cache = await res.json();
+            this._cacheTime = now;
+            return this._cache;
+        } catch { return null; }
+    },
+    async preScan(file) {
+        if (!localStorage.getItem('safeeye_prescan')) return null;
+        const hash = await this.compute(file);
+        if (!hash) return null;
+        const meta = await this.getMetadata();
+        if (!meta) return null;
+        for (const rec of meta) {
+            if (this._hamming(hash, rec.p) <= 3) {
+                return { match: true, phash: hash, is_nsfw: !!rec.n, confidence: rec.c, labels: rec.l, source: 'local_metadata' };
+            }
+        }
+        return { match: false, phash: hash };
+    }
+};
 
 // ========== i18n ==========
 const LANGS = {
     he: {
-        title: 'SafeEye', login: 'התחבר', logout: 'התנתק', token_placeholder: 'טוקן...',
+        title: 'SafeEyes', login: 'התחבר', logout: 'התנתק', token_placeholder: 'טוקן...',
         enter_token: 'הכנס טוקן API כדי להמשיך',
         overview: 'סקירה', providers: 'ספקים', history: 'היסטוריה', tokens: 'טוקנים',
         integrations: 'חיבורים', report: 'דיווח', about: 'אודות',
@@ -159,7 +220,7 @@ const LANGS = {
         last_used: 'שימוש אחרון',
     },
     en: {
-        title: 'SafeEye', login: 'Login', logout: 'Logout', token_placeholder: 'Token...',
+        title: 'SafeEyes', login: 'Login', logout: 'Logout', token_placeholder: 'Token...',
         enter_token: 'Enter your API token to continue',
         overview: 'Overview', providers: 'Providers', history: 'History', tokens: 'Tokens',
         integrations: 'Integrations', report: 'Report', about: 'About',
@@ -242,43 +303,137 @@ function LangSwitch({ i18n }) {
     );
 }
 
-function LoginScreen({ onLogin, i18n }) {
-    const [input, setInput] = useState('');
-    const [showHelp, setShowHelp] = useState(false);
+function PreScanToggle({ i18n }) {
+    const [on, setOn] = useState(!!localStorage.getItem('safeeye_prescan'));
+    const toggle = () => {
+        const next = !on;
+        if (next) localStorage.setItem('safeeye_prescan', '1');
+        else localStorage.removeItem('safeeye_prescan');
+        setOn(next);
+        ClientHash._cache = null;
+    };
     const he = i18n.lang === 'he';
+    return (
+        <button onClick={toggle} title={he ? 'סריקה מקדימה בצד לקוח' : 'Client-side pre-scan'}
+            className="text-xs px-2 py-0.5 rounded"
+            style={{ background: on ? '#C9A962' : '#F0EDE8', color: on ? '#fff' : '#7A7A7A' }}>
+            ⚡
+        </button>
+    );
+}
+
+function LoginScreen({ onLogin, i18n }) {
+    const [step, setStep] = useState('loading'); // loading, local, telegram, telegram_code, token
+    const [username, setUsername] = useState('');
+    const [code, setCode] = useState('');
+    const [input, setInput] = useState('');
+    const [error, setError] = useState('');
+    const [botUser, setBotUser] = useState('');
+    const he = i18n.lang === 'he';
+
+    useEffect(() => {
+        // Demo site — skip login
+        const host = window.location.hostname;
+        if (host.includes('lhflow.com') || host.includes('primary.')) {
+            onLogin('_demo_');
+            return;
+        }
+        fetch(`${API}/api/v1/auth/mode`).then(r => r.json()).then(data => {
+            if (data.mode === 'local') {
+                onLogin(data.token);
+            } else if (data.mode === 'telegram') {
+                setBotUser(data.bot_username);
+                setStep('telegram');
+            } else {
+                setStep('token');
+            }
+        }).catch(() => setStep('token'));
+    }, []);
+
+    const requestCode = async () => {
+        if (!username.trim()) return;
+        setError('');
+        try {
+            const res = await fetch(`${API}/api/v1/auth/telegram/request`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) { setError(data.detail || 'Error'); return; }
+            setStep('telegram_code');
+        } catch (e) { setError(e.message); }
+    };
+
+    const verifyCode = async () => {
+        if (!code.trim()) return;
+        setError('');
+        try {
+            const res = await fetch(`${API}/api/v1/auth/telegram/verify`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username.trim(), code: code.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) { setError(data.detail || 'Error'); return; }
+            onLogin(data.token);
+        } catch (e) { setError(e.message); }
+    };
+
+    if (step === 'loading') return (
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="text-5xl">🛡️</div>
+        </div>
+    );
+
     return (
         <div className="min-h-screen flex items-center justify-center" dir="ltr">
             <div className="card p-8 w-[420px] text-center" style={{ direction: 'ltr' }}>
                 <div className="text-5xl mb-3">🛡️</div>
-                <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEye</h1>
+                <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEyes</h1>
                 <p className="text-muted/70 text-xs mb-3">v{VERSION}</p>
                 <div className="mb-4 flex items-center justify-center gap-2"><LangSwitch i18n={i18n} /><ThemeToggle /></div>
-                <p className="text-muted mb-4 text-sm" dir={he ? 'rtl' : 'ltr'}>{he ? 'הכניסו את טוקן ה-API כדי להמשיך' : 'Enter your API token to continue'}</p>
-                <input className="input mb-3" type="password" value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && onLogin(input)}
-                    placeholder={i18n.t('token_placeholder')} autoFocus dir="ltr" />
-                <button className="w-full btn btn-blue mb-3" onClick={() => onLogin(input)}>{i18n.t('login')}</button>
-                <button className="text-muted text-xs hover:text-ink" onClick={() => setShowHelp(!showHelp)}>
-                    {he ? '❓ אין לי טוקן — מה עושים?' : '❓ No token? What do I do?'}
-                </button>
-                {showHelp && (
-                    <div className="mt-3 p-4 bg-warm rounded-lg text-sm text-left" dir={he ? 'rtl' : 'ltr'}>
-                        <p className="font-medium text-ink mb-2">{he ? 'איך מקבלים טוקן:' : 'How to get a token:'}</p>
-                        <p className="text-muted text-xs mb-2">{he
-                            ? '1. מצאו את ה-Master Token ב-.env (SCAN_API_MASTER_TOKEN)'
-                            : '1. Find the Master Token in .env (SCAN_API_MASTER_TOKEN)'}</p>
-                        <p className="text-muted text-xs mb-2">{he
-                            ? '2. או צרו טוקן חדש דרך הטרמינל:'
-                            : '2. Or create a new token via terminal:'}</p>
-                        <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mb-2" dir="ltr">
-                            curl -X POST http://localhost:1985/api/v1/admin/tokens -H "Authorization: Bearer YOUR_MASTER_TOKEN" -H "Content-Type: application/json" -d '{"{"}name":"my-token"{"}"}'
-                        </div>
-                        <p className="text-muted text-xs">{he
-                            ? '3. העתיקו את הטוקן שקיבלתם והדביקו כאן'
-                            : '3. Copy the returned token and paste it here'}</p>
-                    </div>
-                )}
+
+                {step === 'telegram' && (<>
+                    <p className="text-muted mb-2 text-sm" dir={he ? 'rtl' : 'ltr'}>
+                        {he ? 'הכניסו את שם המשתמש שלכם בטלגרם' : 'Enter your Telegram username'}
+                    </p>
+                    {botUser && <p className="text-muted/60 text-xs mb-3" dir={he ? 'rtl' : 'ltr'}>
+                        {he ? `שלחו /start ל-@${botUser} לפני ההתחברות` : `Send /start to @${botUser} before logging in`}
+                    </p>}
+                    <input className="input mb-3" value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && requestCode()}
+                        placeholder="@username" autoFocus dir="ltr" />
+                    <button className="w-full btn btn-blue mb-3" onClick={requestCode}>
+                        {he ? 'שלח קוד אימות' : 'Send verification code'}
+                    </button>
+                </>)}
+
+                {step === 'telegram_code' && (<>
+                    <p className="text-muted mb-2 text-sm" dir={he ? 'rtl' : 'ltr'}>
+                        {he ? `קוד אימות נשלח ל-@${username.replace('@','')} בטלגרם` : `Code sent to @${username.replace('@','')} on Telegram`}
+                    </p>
+                    <input className="input mb-3 text-center tracking-widest text-lg font-mono" value={code}
+                        onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        onKeyDown={e => e.key === 'Enter' && verifyCode()}
+                        placeholder="000000" autoFocus dir="ltr" maxLength={6} />
+                    <button className="w-full btn btn-blue mb-3" onClick={verifyCode}>
+                        {he ? 'אימות' : 'Verify'}
+                    </button>
+                    <button className="text-muted text-xs hover:text-ink" onClick={() => { setStep('telegram'); setCode(''); }}>
+                        {he ? 'חזרה' : 'Back'}
+                    </button>
+                </>)}
+
+                {step === 'token' && (<>
+                    <p className="text-muted mb-4 text-sm" dir={he ? 'rtl' : 'ltr'}>{he ? 'הכניסו את טוקן ה-API כדי להמשיך' : 'Enter your API token to continue'}</p>
+                    <input className="input mb-3" type="password" value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && onLogin(input)}
+                        placeholder={i18n.t('token_placeholder')} autoFocus dir="ltr" />
+                    <button className="w-full btn btn-blue mb-3" onClick={() => { if (input.trim()) onLogin(input.trim()); else setError(he ? 'הכניסו טוקן' : 'Enter a token'); }}>{i18n.t('login')}</button>
+                </>)}
+
+                {error && <p className="text-red-600 text-xs mt-2">{error}</p>}
             </div>
         </div>
     );
@@ -477,6 +632,41 @@ function OverviewTab({ api, i18n }) {
 
             {/* Analytics — local instance only */}
             <AnalyticsCard api={api} i18n={i18n} />
+
+            {/* Client-side pre-scan toggle */}
+            <PreScanCard i18n={i18n} />
+        </div>
+    );
+}
+
+function PreScanCard({ i18n }) {
+    const he = i18n.lang === 'he';
+    const [on, setOn] = useState(!!localStorage.getItem('safeeye_prescan'));
+    const toggle = () => {
+        const next = !on;
+        if (next) localStorage.setItem('safeeye_prescan', '1');
+        else localStorage.removeItem('safeeye_prescan');
+        setOn(next);
+        ClientHash._cache = null;
+    };
+    return (
+        <div className="card p-6">
+            <div className="flex items-start gap-4">
+                <div className="text-3xl">⚡</div>
+                <div className="flex-1">
+                    <h3 className="font-bold text-ink mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
+                        {he ? 'סריקה מקדימה בצד לקוח' : 'Client-Side Pre-Scan'}
+                    </h3>
+                    <p className="text-muted text-sm mb-3">
+                        {he
+                            ? 'כשמופעל, הדפדפן מחשב טביעת אצבע לתמונה לפני העלאה. אם התמונה כבר מוכרת — התוצאה מוצגת מיידית בלי להעלות את הקובץ. חוסך רוחב פס ומשפר פרטיות.'
+                            : 'When enabled, the browser computes an image fingerprint before upload. If the image is already known, the result is shown instantly without uploading the file. Saves bandwidth and improves privacy.'}
+                    </p>
+                    <button onClick={toggle} className="btn" style={{ background: on ? '#C9A962' : '#F0EDE8', color: on ? '#fff' : '#7A7A7A' }}>
+                        {on ? (he ? '✅ מופעל' : '✅ Enabled') : (he ? 'הפעל' : 'Enable')}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -485,26 +675,28 @@ function OverviewTab({ api, i18n }) {
 function ProvidersTab({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [data, setData] = useState([]);
-    const [health, setHealth] = useState(null);
+    const [status, setStatus] = useState([]);
     const chartRef = useRef(null);
     const chartInstance = useRef(null);
 
-    useEffect(() => {
+    const reload = () => {
         api.fetchApi('/api/v1/stats/providers').then(setData).catch(() => {});
-        fetch(API + '/health').then(r => r.json()).then(setHealth).catch(() => {});
-    }, []);
+        api.fetchApi('/api/v1/admin/providers/status').then(setStatus).catch(() => {});
+    };
+    useEffect(() => { reload(); }, []);
 
     useEffect(() => {
-        if (!data.length || !chartRef.current) return;
+        const activeData = data.filter(d => status.find(s => s.name === d.provider && s.active));
+        if (!activeData.length || !chartRef.current) return;
         if (chartInstance.current) chartInstance.current.destroy();
         chartInstance.current = new Chart(chartRef.current, {
             type: 'bar',
             data: {
-                labels: data.map(d => d.provider),
+                labels: activeData.map(d => d.provider),
                 datasets: [
-                    { label: i18n.t('avg_latency') + ' (ms)', data: data.map(d => d.avg_latency_ms), backgroundColor: '#C9A962', borderRadius: 6 },
-                    { label: i18n.t('flagged'), data: data.map(d => d.nsfw_flagged), backgroundColor: '#C0392B', borderRadius: 6 },
-                    { label: i18n.t('errors'), data: data.map(d => d.error_count), backgroundColor: '#D4A017', borderRadius: 6 },
+                    { label: i18n.t('avg_latency') + ' (ms)', data: activeData.map(d => d.avg_latency_ms), backgroundColor: '#C9A962', borderRadius: 6 },
+                    { label: i18n.t('flagged'), data: activeData.map(d => d.nsfw_flagged), backgroundColor: '#C0392B', borderRadius: 6 },
+                    { label: i18n.t('errors'), data: activeData.map(d => d.error_count), backgroundColor: '#D4A017', borderRadius: 6 },
                 ],
             },
             options: {
@@ -513,39 +705,50 @@ function ProvidersTab({ api, i18n }) {
                 scales: { y: { ticks: { color: '#7A7A7A' }, grid: { color: '#E5E2DD' } }, x: { ticks: { color: '#7A7A7A' }, grid: { display: false } } },
             },
         });
-    }, [data]);
+    }, [data, status]);
 
-    if (!health) return <SkeletonLoader type="cards" count={4} />;
+    const toggle = async (name, isActive) => {
+        const endpoint = isActive ? '/api/v1/admin/providers/disable' : '/api/v1/admin/providers/enable';
+        await api.postApi(endpoint, { provider: name });
+        reload();
+    };
 
-    const providers = health?.providers || {};
-    const active = Object.entries(providers).filter(([,v]) => v === 'ok');
-    const inactive = Object.entries(providers).filter(([,v]) => v !== 'ok');
+    if (!status.length) return <SkeletonLoader type="cards" count={4} />;
+
+    const active = status.filter(s => s.active);
+    const disabled = status.filter(s => s.configured && s.disabled);
+    const notConfigured = status.filter(s => !s.configured && !s.disabled);
     const statsMap = {};
     data.forEach(d => { statsMap[d.provider] = d; });
+
+    const provDef = (name) => PROVIDER_DEFS.find(d => d.key === name) || {};
 
     return (
         <div className="space-y-6 stagger">
             {/* Summary */}
             <div className="card p-6 text-center">
                 <div className="text-4xl mb-2">📡</div>
-                <div className="text-2xl font-bold text-ink">{active.length} / {Object.keys(providers).length}</div>
+                <div className="text-2xl font-bold text-ink">{active.length} / {status.length}</div>
                 <p className="text-muted text-sm">{he ? 'ספקים פעילים' : 'Active Providers'}</p>
             </div>
 
-            {/* Chart — only if scan data exists */}
+            {/* Chart */}
             {data.length > 0 && <div className="card p-6" dir="ltr"><canvas ref={chartRef}></canvas></div>}
 
             {/* Active providers */}
-            <div>
+            {active.length > 0 && <div>
                 <h3 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>✅ {he ? 'פעילים' : 'Active'} ({active.length})</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {active.map(([name]) => {
-                        const s = statsMap[name];
+                    {active.map(p => {
+                        const s = statsMap[p.name];
+                        const def = provDef(p.name);
                         return (
-                            <div key={name} className="card p-4">
+                            <div key={p.name} className="card p-4">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className="status-dot active"></span>
-                                    <span className="font-bold text-ink">{name}</span>
+                                    <span className="text-lg">{def.icon || '📦'}</span>
+                                    <span className="font-bold text-ink flex-1">{p.name}</span>
+                                    <button onClick={() => toggle(p.name, true)} className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                                        title={he ? 'השבת' : 'Disable'}>{he ? 'השבת' : 'Disable'}</button>
                                 </div>
                                 {s ? (
                                     <div className="space-y-1 text-xs">
@@ -560,22 +763,49 @@ function ProvidersTab({ api, i18n }) {
                         );
                     })}
                 </div>
-            </div>
+            </div>}
 
-            {/* Inactive providers */}
-            {inactive.length > 0 && (
-                <div>
-                    <h3 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>⬚ {he ? 'לא מוגדרים' : 'Not Configured'} ({inactive.length})</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {inactive.map(([name, status]) => (
-                            <div key={name} className="card p-3 opacity-60">
-                                <span className="text-sm text-muted">{name}</span>
+            {/* Disabled providers */}
+            {disabled.length > 0 && <div>
+                <h3 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>⏸️ {he ? 'מושבתים' : 'Disabled'} ({disabled.length})</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {disabled.map(p => {
+                        const def = provDef(p.name);
+                        return (
+                            <div key={p.name} className="card p-4 opacity-70">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">{def.icon || '📦'}</span>
+                                    <span className="font-medium text-muted flex-1">{p.name}</span>
+                                    <button onClick={() => toggle(p.name, false)} className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 hover:bg-green-100"
+                                        title={he ? 'הפעל' : 'Enable'}>{he ? 'הפעל' : 'Enable'}</button>
+                                </div>
                             </div>
-                        ))}
-                    </div>
-                    <p className="text-muted/70 text-xs mt-2">{he ? 'התקינו את הספק או הגדירו API key כדי להפעיל.' : 'Install the provider or set an API key to activate.'}</p>
+                        );
+                    })}
                 </div>
-            )}
+            </div>}
+
+            {/* Not configured */}
+            {notConfigured.length > 0 && <div>
+                <h3 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>⬚ {he ? 'לא מוגדרים' : 'Not Configured'} ({notConfigured.length})</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {notConfigured.map(p => {
+                        const def = provDef(p.name);
+                        return (
+                            <div key={p.name} className="card p-4 opacity-60">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-lg">{def.icon || '📦'}</span>
+                                    <span className="text-sm text-muted font-medium">{p.name}</span>
+                                </div>
+                                <p className="text-xs text-muted mb-1">{he ? (def.desc_he || '') : (def.desc_en || '')}</p>
+                                {def.install && <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mt-1 select-all" dir="ltr">{def.install}</div>}
+                                {def.fields && <p className="text-xs text-gold-dark mt-1">{he ? '→ הגדר בטאב חיבורים' : '→ Configure in Integrations tab'}</p>}
+                                {!def.install && !def.fields && <p className="text-xs text-green-600">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>}
         </div>
     );
 }
@@ -837,6 +1067,23 @@ function IntegrationsTab({ api, i18n }) {
         setTimeout(() => setMsg(''), 2000);
     };
 
+    const [installing, setInstalling] = useState('');
+    const installProvider = async (key) => {
+        setInstalling(key);
+        setMsg(i18n.lang === 'he' ? '⏳ מתקין...' : '⏳ Installing...');
+        try {
+            const res = await api.postApi('/api/v1/admin/providers/install', { provider: key });
+            if (res.status === 'ok') {
+                setMsg('✅');
+                reload();
+            } else {
+                setMsg(`❌ ${res.output || 'Install failed'}`);
+            }
+        } catch (e) { setMsg(`❌ ${e.message}`); }
+        setInstalling('');
+        setTimeout(() => setMsg(''), 5000);
+    };
+
     if (!providers) return <div className="text-muted py-8 text-center">{i18n.t('loading')}</div>;
 
     const Badge = ({ ok }) => <span className={`px-2 py-0.5 rounded text-xs text-white ${ok ? 'badge-safe' : 'bg-slate-600'}`}>{ok ? i18n.t('connected') : i18n.t('not_connected')}</span>;
@@ -868,7 +1115,16 @@ function IntegrationsTab({ api, i18n }) {
                             {def.local ? (
                                 <div>
                                     <p className="text-muted text-sm">{he ? (def.desc_he || 'מודל מקומי') : (def.desc_en || 'Local model')}</p>
-                                    {def.install && <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mt-2" dir="ltr">{def.install}</div>}
+                                    {def.install && !isConnected && (
+                                        <div className="mt-2 space-y-2">
+                                            <button className="btn btn-green w-full" disabled={installing === def.key}
+                                                onClick={() => installProvider(def.key)}>
+                                                {installing === def.key ? (he ? '⏳ מתקין...' : '⏳ Installing...') : (he ? '📦 התקן אוטומטית' : '📦 Auto Install')}
+                                            </button>
+                                            <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 select-all" dir="ltr">{def.install}</div>
+                                        </div>
+                                    )}
+                                    {def.install && isConnected && <p className="text-green-600 text-xs mt-1">{he ? '✅ מותקן ופעיל' : '✅ Installed & active'}</p>}
                                     {!def.install && <p className="text-green-600 text-xs mt-1">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
                                 </div>
                             ) : isConnected ? (
@@ -901,86 +1157,175 @@ function IntegrationsTab({ api, i18n }) {
     );
 }
 
-/* ========== REPORT ========== */
+/* ========== COMMUNITY ========== */
 function ReportTab({ api, i18n }) {
-    const [mode, setMode] = useState('bug');
+    const he = i18n.lang === 'he';
+    const REPORT_API = 'https://lhflow.com:1985';
+    const REPO_URL = 'https://github.com/Dandona100/SafeEyes';
+
+    const [filter, setFilter] = useState('all');
+    const [reports, setReports] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const [showForm, setShowForm] = useState(false);
+    const [mode, setMode] = useState('feature');
     const [title, setTitle] = useState('');
     const [desc, setDesc] = useState('');
-    const [status, setStatus] = useState('');
+    const [formStatus, setFormStatus] = useState('');
 
-    const REPO_URL = 'https://github.com/Dandona100/SafeEye';
+    const deviceId = useRef(localStorage.getItem('safeeye_device') || (() => { const id = crypto.randomUUID(); localStorage.setItem('safeeye_device', id); return id; })());
 
-    const REPORT_API = 'https://lhflow.com:1985';
+    const load = async () => {
+        setLoading(true); setError('');
+        try {
+            const typeParam = filter !== 'all' ? `?type=${filter}` : '';
+            const res = await fetch(`${REPORT_API}/api/v1/community${typeParam}`);
+            if (!res.ok) throw new Error(res.statusText);
+            setReports(await res.json());
+        } catch (e) {
+            setError(he ? 'טעינה נכשלה' : 'Load failed');
+        }
+        setLoading(false);
+    };
+    useEffect(() => { load(); }, [filter]);
+
+    const vote = async (id) => {
+        try {
+            const res = await fetch(`${REPORT_API}/api/v1/community/${id}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_uuid: deviceId.current }),
+            });
+            const data = await res.json();
+            if (data.status === 'already_voted') return;
+            load();
+        } catch {}
+    };
+
     const send = async () => {
         if (!title) return;
         try {
             const res = await fetch(`${REPORT_API}/api/v1/community`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, description: desc, type: mode, source: window.location.hostname }),
+                body: JSON.stringify({ title, description: desc, type: mode, device_uuid: deviceId.current, source: window.location.hostname }),
             }).then(r => r.json());
             if (res.id) {
-                setStatus(`✅ ${i18n.t('sent_ok')}`);
-                setTitle(''); setDesc('');
+                setFormStatus(`✅ ${i18n.t('sent_ok')}`);
+                setTitle(''); setDesc(''); setShowForm(false); load();
             } else {
-                setStatus(`❌ ${i18n.t('send_fail')}: ${res.detail || ''}`);
+                setFormStatus(`❌ ${i18n.t('send_fail')}: ${res.detail || ''}`);
             }
         } catch (e) {
-            setStatus(`❌ ${i18n.t('send_fail')}: ${e.message}`);
+            setFormStatus(`❌ ${i18n.t('send_fail')}: ${e.message}`);
         }
-        setTimeout(() => setStatus(''), 8000);
+        setTimeout(() => setFormStatus(''), 8000);
     };
 
-    const openGH = (path) => window.open(`${REPO_URL}${path}`, '_blank');
+    const features = reports.filter(r => r.type === 'feature');
+    const bugs = reports.filter(r => r.type === 'bug');
 
-    const he = i18n.lang === 'he';
-    const DEMO_URL = 'https://lhflow.com/SafeEye';
     return (
         <div className="space-y-6">
             {/* Header */}
             <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
-                <div className="text-3xl mb-2">📝</div>
-                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'דיווח ותרומה' : 'Report & Contribute'}</h3>
-                <p className="text-muted text-sm mt-1">{he ? 'עזרו לנו לשפר את SafeEye' : 'Help us improve SafeEye'}</p>
+                <div className="text-3xl mb-2">🏘️</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'הקהילה' : 'Community'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'דווחו על באגים, הציעו פיצ\'רים, והצביעו — יחד נבנה את SafeEyes' : 'Report bugs, suggest features, and vote — let\'s build SafeEyes together'}</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Report channels */}
-                <div className="card p-6">
-                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'דיווח' : 'Report'}</h4>
-                    <div className="space-y-3">
-                        {[
-                            { icon: '🌐', text: he ? 'דיווח באתר הרשמי' : 'Report on official site', url: `${DEMO_URL}#community` },
-                            { icon: '💬', text: he ? 'פנייה למפתח בטלגרם' : 'Contact developer on Telegram', url: 'https://t.me/DVS20' },
-                            { icon: '🐛', text: he ? 'דיווח באג ב-GitHub' : 'Report bug on GitHub', url: `${REPO_URL}/issues/new?labels=bug` },
-                            { icon: '💡', text: he ? 'בקשת פיצ\'ר' : 'Request feature', url: `${REPO_URL}/issues/new?labels=enhancement` },
-                        ].map((item, i) => (
-                            <a key={i} href={item.url} target="_blank" rel="noopener" className="card p-3 w-full flex items-center gap-3 clickable block no-underline">
-                                <span className="text-xl">{item.icon}</span>
-                                <span className="text-sm text-ink">{item.text}</span>
-                            </a>
-                        ))}
-                    </div>
-                </div>
-
-                {/* GitHub links */}
-                <div className="card p-6">
-                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'תרומה לפרויקט' : 'Contribute'}</h4>
-                    <div className="space-y-3">
-                        {[
-                            { icon: '🔀', text: he ? 'הצע Pull Request' : 'Submit Pull Request', path: '/pulls' },
-                            { icon: '⭐', text: he ? 'תנו כוכב!' : 'Star us!', path: '' },
-                            { icon: '📖', text: he ? 'תיעוד' : 'Documentation', path: '#readme' },
-                        ].map((item, i) => (
-                            <a key={i} href={`${REPO_URL}${item.path}`} target="_blank" rel="noopener" className="card p-3 w-full flex items-center gap-3 clickable block no-underline">
-                                <span className="text-xl">{item.icon}</span>
-                                <span className="text-sm text-ink">{item.text}</span>
-                            </a>
-                        ))}
-                    </div>
-                    <p className="text-muted/70 text-xs mt-4 text-center" dir="ltr">{REPO_URL}</p>
-                </div>
+            {/* Add + Links row */}
+            <div className="flex flex-wrap gap-2 items-center">
+                <button className="btn" onClick={() => setShowForm(!showForm)}>
+                    {showForm ? (he ? 'ביטול' : 'Cancel') : (he ? '+ הוסיפו הצעה' : '+ Add suggestion')}
+                </button>
+                <a href={`${REPO_URL}/issues/new?labels=bug`} target="_blank" rel="noopener" className="btn" style={{ background: '#FAF9F7', color: '#7A7A7A', textDecoration: 'none' }}>
+                    🐛 GitHub
+                </a>
+                <a href="https://t.me/DVS20" target="_blank" rel="noopener" className="btn" style={{ background: '#FAF9F7', color: '#7A7A7A', textDecoration: 'none' }}>
+                    💬 Telegram
+                </a>
             </div>
+
+            {/* Submit form */}
+            {showForm && (
+                <div className="card p-5 space-y-3">
+                    <div className="flex gap-2">
+                        {[{ id: 'feature', icon: '💡', label: he ? 'הצעה' : 'Feature' }, { id: 'bug', icon: '🐛', label: he ? 'באג' : 'Bug' }].map(t => (
+                            <button key={t.id} onClick={() => setMode(t.id)} className="btn" style={{ background: mode === t.id ? '#C9A962' : '#FAF9F7', color: mode === t.id ? '#fff' : '#7A7A7A' }}>
+                                {t.icon} {t.label}
+                            </button>
+                        ))}
+                    </div>
+                    <input className="input w-full" placeholder={he ? 'כותרת' : 'Title'} value={title} onChange={e => setTitle(e.target.value)} />
+                    <textarea className="input w-full" rows={3} placeholder={he ? 'תיאור (אופציונלי)' : 'Description (optional)'} value={desc} onChange={e => setDesc(e.target.value)} />
+                    <button className="btn" onClick={send}>{i18n.t('send')}</button>
+                    {formStatus && <p className="text-sm mt-1">{formStatus}</p>}
+                </div>
+            )}
+
+            {/* Reports list */}
+            {loading ? <SkeletonLoader type="list" count={4} /> : error ? (
+                <div className="card p-6 text-center">
+                    <p className="text-muted">{error}</p>
+                    <button className="btn mt-3" onClick={load}>{he ? 'נסו שוב' : 'Retry'}</button>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {/* Features section */}
+                    {features.length > 0 && (
+                        <div>
+                            <h4 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>💡 {he ? 'הצעות' : 'Suggestions'}</h4>
+                            <div className="space-y-2">
+                                {features.map(r => (
+                                    <div key={r.id} className="card p-4 flex items-start gap-3">
+                                        <button onClick={() => vote(r.id)} className="flex flex-col items-center min-w-[40px] pt-0.5" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                            <span style={{ color: '#C9A962', fontSize: '1rem' }}>▲</span>
+                                            <span className="text-sm font-bold text-ink">{r.vote_count || 0}</span>
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-ink">{r.title}</p>
+                                            {r.description && <p className="text-xs text-muted mt-1">{r.description}</p>}
+                                            <p className="text-xs text-muted/60 mt-1">{new Date(r.created_at).toLocaleDateString()}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Bugs section */}
+                    {bugs.length > 0 && (
+                        <div>
+                            <h4 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>🐛 {he ? 'באגים' : 'Bugs'}</h4>
+                            <div className="space-y-2">
+                                {bugs.map(r => (
+                                    <div key={r.id} className="card p-4 flex items-start gap-3">
+                                        <button onClick={() => vote(r.id)} className="flex flex-col items-center min-w-[40px] pt-0.5" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                            <span style={{ color: '#C0392B', fontSize: '1rem' }}>▲</span>
+                                            <span className="text-sm font-bold text-ink">{r.vote_count || 0}</span>
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-ink">{r.title}</p>
+                                            {r.description && <p className="text-xs text-muted mt-1">{r.description}</p>}
+                                            <p className="text-xs text-muted/60 mt-1">{new Date(r.created_at).toLocaleDateString()}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Empty state */}
+                    {reports.length === 0 && (
+                        <div className="card p-8 text-center">
+                            <div className="text-3xl mb-2">📭</div>
+                            <p className="text-muted">{he ? 'אין דיווחים עדיין — היו הראשונים!' : 'No reports yet — be the first!'}</p>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -1169,12 +1514,12 @@ function AboutTab({ api, i18n }) {
             {/* Hero */}
             <div className="card p-10 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
                 <div className="text-7xl mb-5">🛡️</div>
-                <h2 className="text-4xl font-bold font-display" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEye</h2>
+                <h2 className="text-4xl font-bold font-display" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEyes</h2>
                 <p className="text-muted text-lg mt-3">{he ? 'מערכת סריקת תוכן מזיק בקוד פתוח' : 'Open-Source Content Safety Scanner'}</p>
                 <p className="text-muted/70 text-sm mt-1">v{VERSION}</p>
                 <div className="flex justify-center gap-3 mt-6">
-                    <a href="https://github.com/Dandona100/SafeEye" target="_blank" className="btn btn-blue text-sm">⭐ GitHub</a>
-                    <a href="https://lhflow.com/SafeEye/docs.html" target="_blank" className="btn btn-gray text-sm">{he ? '📚 תיעוד' : '📚 Docs'}</a>
+                    <a href="https://github.com/Dandona100/SafeEyes" target="_blank" className="btn btn-blue text-sm">⭐ GitHub</a>
+                    <a href="https://lhflow.com/SafeEyes/docs.html" target="_blank" className="btn btn-gray text-sm">{he ? '📚 תיעוד' : '📚 Docs'}</a>
                 </div>
             </div>
 
@@ -1195,8 +1540,8 @@ function AboutTab({ api, i18n }) {
                     </p>
                     <p style={{ color: '#C9C4BB' }}>
                         {he
-                            ? <>ולכן נוצרה <b style={{color:'white'}}>SafeEye</b> — מערכת קוד פתוח ישראלית. אנחנו מזמינים אתכם <b style={{color:'#C9A962'}}>לעבור על הקוד, לשפר, ויחד נהפוך את SafeEye לפרויקט הקוד הפתוח הישראלי הגדול בעולם</b>.</>
-                            : <>That's why <b style={{color:'white'}}>SafeEye</b> was created. We invite you to <b style={{color:'#C9A962'}}>review the code, improve it, and together make SafeEye the largest Israeli open-source content moderation project</b>.</>
+                            ? <>ולכן נוצרה <b style={{color:'white'}}>SafeEyes</b> — מערכת קוד פתוח ישראלית. אנחנו מזמינים אתכם <b style={{color:'#C9A962'}}>לעבור על הקוד, לשפר, ויחד נהפוך את SafeEyes לפרויקט הקוד הפתוח הישראלי הגדול בעולם</b>.</>
+                            : <>That's why <b style={{color:'white'}}>SafeEyes</b> was created. We invite you to <b style={{color:'#C9A962'}}>review the code, improve it, and together make SafeEyes the largest Israeli open-source content moderation project</b>.</>
                         }
                     </p>
                     <div className="pt-2">
@@ -1408,6 +1753,21 @@ function ApiDocsTab({ api, i18n, onNavigate }) {
         log(`$ scan file "${file.name}" (${(file.size/1024).toFixed(1)}KB)`, 'cmd');
         setLoading(true);
         try {
+            // Client-side pre-scan: check local metadata before uploading
+            if (file.type?.startsWith('image/')) {
+                const pre = await ClientHash.preScan(file);
+                if (pre?.match) {
+                    log(`⚡ Pre-scan match (local metadata) — phash: ${pre.phash}`, 'output');
+                    log(`Result: ${pre.is_nsfw ? '🚨 NSFW' : '✅ SAFE'} | confidence: ${(pre.confidence*100).toFixed(0)}% | source: metadata`, pre.is_nsfw ? 'error' : 'success');
+                    if (pre.labels?.length > 0) log(`Labels: ${pre.labels.join(', ')}`, 'warn');
+                    log('Skipped upload — matched cached metadata.', 'output');
+                    setLoading(false);
+                    return;
+                }
+                if (pre && !pre.match) {
+                    log(`pHash: ${pre.phash} (no local match, uploading...)`, 'output');
+                }
+            }
             const formData = new FormData();
             formData.append('file', file);
             const resp = await fetch(`${baseUrl}/api/v1/sandbox/scan`, {
@@ -1470,7 +1830,7 @@ function ApiDocsTab({ api, i18n, onNavigate }) {
         { title: 'Node.js', run: 'nodejs',
           code: `const SAFEEYE = "${baseUrl}";\nconst TOKEN = "${tk}";\n\n// ${he ? 'בדיקת תקינות' : 'Health check'}\nconst health = await fetch(\`\${SAFEEYE}/health\`).then(r => r.json());\nconsole.log(health);\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nconst fs = require("fs");\nconst form = new FormData();\nform.append("file", fs.createReadStream("image.jpg"));\nconst resp = await fetch(\`\${SAFEEYE}/api/v1/scan/file\`, {\n  method: "POST",\n  headers: { Authorization: \`Bearer \${TOKEN}\` },\n  body: form,\n});\nconst { result } = await resp.json();\nconsole.log(result.is_nsfw ? "NSFW!" : "Safe");` },
         { title: 'Telegram Bot', run: 'telegram',
-          code: `import aiohttp\n\nSAFEEYE = "${baseUrl}"\nTOKEN = "${tk}"\n\nasync def is_safe(file_path: str) -> bool:\n    """${he ? 'בדיקה אם קובץ בטוח לפני שליחה למשתמש' : 'Check if file is safe before sending to user'}"""\n    async with aiohttp.ClientSession() as session:\n        with open(file_path, "rb") as f:\n            data = aiohttp.FormData()\n            data.add_field("file", f, filename="check.jpg")\n            async with session.post(\n                f"{SAFEEYE}/api/v1/scan/file",\n                data=data,\n                headers={"Authorization": f"Bearer {TOKEN}"},\n            ) as resp:\n                result = (await resp.json())["result"]\n                return not result["is_nsfw"]\n\n# ${he ? 'בהנדלר של הבוט:' : 'In your bot handler:'}\nif await is_safe(downloaded_file):\n    await bot.send_document(chat_id, downloaded_file)\nelse:\n    os.remove(downloaded_file)\n    await bot.send_message(chat_id, "Blocked by SafeEye")` },
+          code: `import aiohttp\n\nSAFEEYE = "${baseUrl}"\nTOKEN = "${tk}"\n\nasync def is_safe(file_path: str) -> bool:\n    """${he ? 'בדיקה אם קובץ בטוח לפני שליחה למשתמש' : 'Check if file is safe before sending to user'}"""\n    async with aiohttp.ClientSession() as session:\n        with open(file_path, "rb") as f:\n            data = aiohttp.FormData()\n            data.add_field("file", f, filename="check.jpg")\n            async with session.post(\n                f"{SAFEEYE}/api/v1/scan/file",\n                data=data,\n                headers={"Authorization": f"Bearer {TOKEN}"},\n            ) as resp:\n                result = (await resp.json())["result"]\n                return not result["is_nsfw"]\n\n# ${he ? 'בהנדלר של הבוט:' : 'In your bot handler:'}\nif await is_safe(downloaded_file):\n    await bot.send_document(chat_id, downloaded_file)\nelse:\n    os.remove(downloaded_file)\n    await bot.send_message(chat_id, "Blocked by SafeEyes")` },
         { title: 'Go', run: 'go',
           code: `package main\n\nimport (\n    "bytes"\n    "fmt"\n    "io"\n    "mime/multipart"\n    "net/http"\n    "os"\n    "encoding/json"\n)\n\nconst SAFEEYE = "${baseUrl}"\nconst TOKEN = "${tk}"\n\nfunc scanFile(path string) (map[string]interface{}, error) {\n    file, _ := os.Open(path)\n    defer file.Close()\n\n    body := &bytes.Buffer{}\n    writer := multipart.NewWriter(body)\n    part, _ := writer.CreateFormFile("file", path)\n    io.Copy(part, file)\n    writer.Close()\n\n    req, _ := http.NewRequest("POST", SAFEEYE+"/api/v1/scan/file", body)\n    req.Header.Set("Authorization", "Bearer "+TOKEN)\n    req.Header.Set("Content-Type", writer.FormDataContentType())\n\n    resp, err := http.DefaultClient.Do(req)\n    if err != nil { return nil, err }\n    defer resp.Body.Close()\n\n    var result map[string]interface{}\n    json.NewDecoder(resp.Body).Decode(&result)\n    return result, nil\n}` },
         { title: 'PHP', run: 'php',
@@ -1480,7 +1840,7 @@ function ApiDocsTab({ api, i18n, onNavigate }) {
         { title: 'Rust', run: 'rust',
           code: `use reqwest;\nuse serde_json::Value;\n\nconst SAFEEYE: &str = "${baseUrl}";\nconst TOKEN: &str = "${tk}";\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client = reqwest::Client::new();\n\n    // ${he ? 'סריקת קובץ' : 'Scan file'}\n    let file = tokio::fs::read("image.jpg").await?;\n    let part = reqwest::multipart::Part::bytes(file)\n        .file_name("image.jpg");\n    let form = reqwest::multipart::Form::new()\n        .part("file", part);\n\n    let resp: Value = client.post(&format!("{}/api/v1/scan/file", SAFEEYE))\n        .header("Authorization", format!("Bearer {}", TOKEN))\n        .multipart(form)\n        .send().await?\n        .json().await?;\n\n    let is_nsfw = resp["result"]["is_nsfw"].as_bool().unwrap();\n    println!("{}", if is_nsfw { "NSFW!" } else { "Safe" });\n    Ok(())\n}` },
         { title: 'Java', run: 'java',
-          code: `import java.net.http.*;\nimport java.nio.file.*;\n\nString SAFEEYE = "${baseUrl}";\nString TOKEN = "${tk}";\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nvar boundary = "----SafeEye";\nvar body = "--" + boundary + "\\r\\n"\n    + "Content-Disposition: form-data; name=\\"file\\"; "\n    + "filename=\\"image.jpg\\"\\r\\n"\n    + "Content-Type: image/jpeg\\r\\n\\r\\n";\n\nvar fileBytes = Files.readAllBytes(Path.of("image.jpg"));\nvar end = "\\r\\n--" + boundary + "--\\r\\n";\n\nvar request = HttpRequest.newBuilder()\n    .uri(URI.create(SAFEEYE + "/api/v1/scan/file"))\n    .header("Authorization", "Bearer " + TOKEN)\n    .header("Content-Type", "multipart/form-data; boundary=" + boundary)\n    .POST(HttpRequest.BodyPublishers.ofByteArrays(\n        List.of(body.getBytes(), fileBytes, end.getBytes())))\n    .build();\n\nvar response = HttpClient.newHttpClient()\n    .send(request, HttpResponse.BodyHandlers.ofString());\nSystem.out.println(response.body());` },
+          code: `import java.net.http.*;\nimport java.nio.file.*;\n\nString SAFEEYE = "${baseUrl}";\nString TOKEN = "${tk}";\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nvar boundary = "----SafeEyes";\nvar body = "--" + boundary + "\\r\\n"\n    + "Content-Disposition: form-data; name=\\"file\\"; "\n    + "filename=\\"image.jpg\\"\\r\\n"\n    + "Content-Type: image/jpeg\\r\\n\\r\\n";\n\nvar fileBytes = Files.readAllBytes(Path.of("image.jpg"));\nvar end = "\\r\\n--" + boundary + "--\\r\\n";\n\nvar request = HttpRequest.newBuilder()\n    .uri(URI.create(SAFEEYE + "/api/v1/scan/file"))\n    .header("Authorization", "Bearer " + TOKEN)\n    .header("Content-Type", "multipart/form-data; boundary=" + boundary)\n    .POST(HttpRequest.BodyPublishers.ofByteArrays(\n        List.of(body.getBytes(), fileBytes, end.getBytes())))\n    .build();\n\nvar response = HttpClient.newHttpClient()\n    .send(request, HttpResponse.BodyHandlers.ofString());\nSystem.out.println(response.body());` },
         { title: he ? '📋 Endpoints' : '📋 Endpoints', run: 'help',
           code: `POST /api/v1/scan/file          ${he ? 'סריקת קובץ' : 'scan uploaded file'}\nPOST /api/v1/scan/url?url=...   ${he ? 'סריקת URL' : 'scan a URL'}\nGET  /api/v1/scan/{id}          ${he ? 'תוצאת סריקה' : 'get scan result'}\nPOST /api/v1/feedback/{id}      ${he ? 'משוב על דיוק' : 'accuracy feedback'}\nGET  /api/v1/stats              ${he ? 'סטטיסטיקות' : 'overview stats'}\nGET  /api/v1/stats/providers    ${he ? 'מדדי ספקים' : 'provider metrics'}\nGET  /api/v1/stats/history      ${he ? 'היסטוריה' : 'scan history'}\nPOST /api/v1/admin/tokens       ${he ? 'יצירת טוקן (master)' : 'create token (master)'}\nGET  /health                    ${he ? 'בדיקת תקינות' : 'health check'}` },
     ];
@@ -1861,7 +2221,7 @@ function DomainTab({ api, i18n }) {
             <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
                 <div className="text-3xl mb-2">🌐</div>
                 <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'חיבור דומיין' : 'Connect Domain'}</h3>
-                <p className="text-muted text-sm mt-1">{he ? 'חברו את SafeEye לדומיין שלכם לגישה מכל מקום' : 'Connect SafeEye to your domain for access from anywhere'}</p>
+                <p className="text-muted text-sm mt-1">{he ? 'חברו את SafeEyes לדומיין שלכם לגישה מכל מקום' : 'Connect SafeEyes to your domain for access from anywhere'}</p>
             </div>
             {/* Server info */}
             <div className="card p-5">
@@ -1888,8 +2248,8 @@ function DomainTab({ api, i18n }) {
                 <div className="card p-4">
                     <h3 className="font-medium mb-1">🌐 {he ? 'חיבור דומיין' : 'Connect Domain'}</h3>
                     <p className="text-muted/70 text-xs mb-4">{he
-                        ? 'חברו את SafeEye לדומיין שלכם כדי לגשת לדשבורד ול-API מכל מקום עם HTTPS.'
-                        : 'Connect SafeEye to your domain to access the dashboard and API from anywhere with HTTPS.'}</p>
+                        ? 'חברו את SafeEyes לדומיין שלכם כדי לגשת לדשבורד ול-API מכל מקום עם HTTPS.'
+                        : 'Connect SafeEyes to your domain to access the dashboard and API from anywhere with HTTPS.'}</p>
 
                     {/* Mode selection */}
                     <div className="flex gap-2 mb-3">
@@ -1907,8 +2267,8 @@ function DomainTab({ api, i18n }) {
                         /* Path mode: liviatchen.com/scanner */
                         <div className="space-y-3">
                             <p className="text-muted text-xs">{he
-                                ? 'הוסיפו את SafeEye כנתיב בדומיין שכבר מוגדר אצלכם בנגינקס (למשל: example.com/scanner).'
-                                : 'Add SafeEye as a path on a domain already configured in your nginx (e.g. example.com/scanner).'}</p>
+                                ? 'הוסיפו את SafeEyes כנתיב בדומיין שכבר מוגדר אצלכם בנגינקס (למשל: example.com/scanner).'
+                                : 'Add SafeEyes as a path on a domain already configured in your nginx (e.g. example.com/scanner).'}</p>
                             <input className="input" placeholder={he ? 'דומיין קיים (example.com)' : 'Existing domain (example.com)'}
                                 value={baseDomain} onChange={e => setBaseDomain(e.target.value)} dir="ltr" />
                             <div className="flex items-center gap-1" dir="ltr">
@@ -2047,17 +2407,19 @@ function App() {
 
     if (!authed) return <LoginScreen onLogin={(t) => { api.saveToken(t); setAuthed(true); }} i18n={i18n} />;
 
-    const tabs = [
+    const isDemo = api.token === '_demo_';
+    const allTabs = [
         { id: 'overview', label: i18n.lang === 'he' ? 'דשבורד' : 'Dashboard', icon: '📊' },
         { id: 'history', label: i18n.t('history'), icon: '📋' },
         { id: 'providers', label: i18n.t('providers'), icon: '⚙️' },
-        { id: 'tokens', label: i18n.t('tokens'), icon: '🔑' },
-        { id: 'integrations', label: i18n.t('integrations'), icon: '🔗' },
+        { id: 'tokens', label: i18n.t('tokens'), icon: '🔑', admin: true },
+        { id: 'integrations', label: i18n.t('integrations'), icon: '🔗', admin: true },
         { id: 'docs', label: 'API', icon: '📚' },
-        { id: 'domain', label: i18n.lang === 'he' ? 'דומיין' : 'Domain', icon: '🌐' },
-        { id: 'report', label: i18n.t('report'), icon: '📝' },
+        { id: 'domain', label: i18n.lang === 'he' ? 'דומיין' : 'Domain', icon: '🌐', admin: true },
+        { id: 'community', label: i18n.lang === 'he' ? 'קהילה' : 'Community', icon: '🏘️' },
         { id: 'about', label: i18n.t('about'), icon: '💡' },
     ];
+    const tabs = isDemo ? allTabs.filter(t => !t.admin) : allTabs;
 
     return (
         <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 sm:py-6" dir="ltr">
@@ -2070,7 +2432,7 @@ function App() {
                 <div className="flex items-center gap-2 sm:gap-3">
                     <ThemeToggle />
                     <LangSwitch i18n={i18n} />
-                    <button className="text-muted hover:text-ink text-xs sm:text-sm" onClick={() => { api.clearToken(); setAuthed(false); }}>{i18n.t('logout')}</button>
+                    {!isDemo && <button className="text-muted hover:text-ink text-xs sm:text-sm" onClick={() => { api.clearToken(); setAuthed(false); }}>{i18n.t('logout')}</button>}
                 </div>
             </div>
             <div style={{ display: 'flex', flexDirection: i18n.isRtl ? 'row-reverse' : 'row', gap: '0px', borderBottom: '1px solid #E5E2DD', marginBottom: '16px', padding: '0 4px', overflowX: 'auto' }}>
@@ -2091,7 +2453,7 @@ function App() {
             {tab === 'integrations' && <IntegrationsTab api={api} i18n={i18n} />}
             {tab === 'docs' && <ApiDocsTab api={api} i18n={i18n} onNavigate={setTab} />}
             {tab === 'domain' && <DomainTab api={api} i18n={i18n} />}
-            {tab === 'report' && <ReportTab api={api} i18n={i18n} />}
+            {tab === 'community' && <ReportTab api={api} i18n={i18n} />}
             {tab === 'about' && <AboutTab api={api} i18n={i18n} />}
             </div>
         </div>

@@ -404,6 +404,65 @@ async def bump_token_usage(token_hash: str):
         await db.close()
 
 
+# Metadata export for client-side pre-scan
+
+async def export_hash_metadata() -> list[dict]:
+    """Export phash→result metadata for client-side matching.
+    Returns compact records: {p: phash, n: is_nsfw, c: confidence, l: labels}."""
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT phash, is_nsfw, confidence, labels FROM scan_history "
+            "WHERE phash IS NOT NULL ORDER BY timestamp DESC LIMIT 10000"
+        )
+        results = []
+        for row in rows:
+            r = dict(row)
+            results.append({
+                "p": r["phash"],
+                "n": r["is_nsfw"],
+                "c": round(r["confidence"], 2),
+                "l": json.loads(r["labels"]) if r["labels"] else [],
+            })
+        return results
+    finally:
+        await db.close()
+
+
+async def import_hash_metadata(records: list[dict], source: str):
+    """Import hash metadata from another SafeEye server.
+    Merges into scan_history with source='shared:<origin>'."""
+    db = await get_db()
+    try:
+        for rec in records:
+            phash = rec.get("p", "")
+            if not phash:
+                continue
+            existing = await db.execute_fetchall(
+                "SELECT 1 FROM scan_history WHERE phash=?", (phash,)
+            )
+            if existing:
+                continue
+            scan_id = f"shared_{phash[:12]}"
+            await db.execute(
+                "INSERT OR IGNORE INTO scan_history "
+                "(id, timestamp, source, is_nsfw, confidence, labels, phash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    scan_id,
+                    datetime.utcnow().isoformat(),
+                    f"shared:{source}",
+                    rec.get("n", 0),
+                    rec.get("c", 0),
+                    json.dumps(rec.get("l", [])),
+                    phash,
+                ),
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 # Community operations
 
 async def insert_community_report(report_id: str, report_type: str, title: str, description: str, device_uuid: str) -> dict:

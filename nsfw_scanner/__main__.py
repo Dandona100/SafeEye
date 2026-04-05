@@ -90,7 +90,7 @@ except ImportError:
 
 print()
 print("=" * 60)
-print("  🛡️  SafeEye — Content Safety Scanner")
+print("  🛡️  SafeEyes — Content Safety Scanner")
 print("=" * 60)
 print()
 print(f"  ✅ Running on port {port}")
@@ -110,9 +110,9 @@ print("  📋 No domain? Use SSH tunnel from your computer:")
 print(f"     ssh -L {port}:localhost:{port} {user}@{ip}")
 print(f"     Then open: http://localhost:{port}/dashboard")
 print()
-print("  📚 Full docs:  https://github.com/Dandona100/SafeEye")
-print("  💡 Suggest:    https://github.com/Dandona100/SafeEye/issues")
-print("  🤝 Contribute: https://github.com/Dandona100/SafeEye/pulls")
+print("  📚 Full docs:  https://github.com/Dandona100/SafeEyes")
+print("  💡 Suggest:    https://github.com/Dandona100/SafeEyes/issues")
+print("  🤝 Contribute: https://github.com/Dandona100/SafeEyes/pulls")
 print("  📧 Contact:    https://t.me/DVS20")
 print()
 print(f"  🐛 Debug:      LOG_LEVEL={log_level} (set in .env)")
@@ -122,7 +122,7 @@ print()
 # Check for updates on startup
 try:
     import urllib.request, json as _json
-    req = urllib.request.Request("https://api.github.com/repos/Dandona100/SafeEye/commits/main",
+    req = urllib.request.Request("https://api.github.com/repos/Dandona100/SafeEyes/commits/main",
                                  headers={"Accept": "application/vnd.github.v3+json"})
     with urllib.request.urlopen(req, timeout=5) as resp:
         data = _json.loads(resp.read())
