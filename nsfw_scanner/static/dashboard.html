@@ -474,6 +474,9 @@ function OverviewTab({ api, i18n }) {
                     : <span className="text-muted/70">{i18n.t('none_configured')}</span>
                 }
             </div>
+
+            {/* Analytics — local instance only */}
+            <AnalyticsCard api={api} i18n={i18n} />
         </div>
     );
 }
@@ -972,6 +975,7 @@ function UpdateChecker({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [status, setStatus] = useState(null);
     const [checking, setChecking] = useState(false);
+    const [updating, setUpdating] = useState(false);
     const [updateStatus, setUpdateStatus] = useState(null);
 
     const check = async () => {
@@ -1019,12 +1023,20 @@ function UpdateChecker({ api, i18n }) {
                             <span className="text-ink text-xs">{status.remote_date ? new Date(status.remote_date).toLocaleDateString() : '-'}</span>
                         </div>
                     </div>
-                    <div className="text-sm text-muted">
-                        <p className="font-medium mb-1">{he ? 'לעדכון, הריצו בשרת:' : 'To update, run on server:'}</p>
-                        <CopyBlock text={status.install_command || 'cd SafeEye && git pull && docker compose up -d --build'}>
-                            <span className="text-green-500">{status.install_command || 'cd SafeEye && git pull && docker compose up -d --build'}</span>
-                        </CopyBlock>
-                    </div>
+                    <button className={`btn btn-green w-full mt-2 ${updating ? 'opacity-50' : ''}`} disabled={updating} onClick={async () => {
+                        setUpdating(true);
+                        setUpdateStatus(he ? '⏳ מעדכן...' : '⏳ Updating...');
+                        const res = await api.postApi('/api/v1/admin/deploy', {});
+                        if (res.status === 'deploying') {
+                            setUpdateStatus(he ? '🔄 העדכון החל. הדף יתרענן תוך 30 שניות...' : '🔄 Update started. Page will refresh in 30s...');
+                            setTimeout(() => window.location.reload(), 30000);
+                        } else {
+                            setUpdateStatus(`❌ ${res.message || 'Failed'}`);
+                        }
+                        setUpdating(false);
+                    }}>
+                        ⚡ {he ? 'עדכן עכשיו' : 'Update Now'}
+                    </button>
                     {updateStatus && <div className="text-sm mt-2">{updateStatus}</div>}
                 </div>
             )}
@@ -1224,10 +1236,6 @@ function AboutTab({ api, i18n }) {
                     </div>
                 </div>
             </div>
-
-            {/* Update checker */}
-            {/* Analytics */}
-            <AnalyticsCard api={api} i18n={i18n} />
 
             <UpdateChecker api={api} i18n={i18n} />
 

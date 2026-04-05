@@ -2000,15 +2000,55 @@ async def dashboard():
 
 # ========== Auto-Deploy ==========
 
+def _run_deploy():
+    """Run git pull + docker compose rebuild. Works from inside container with mounted docker.sock."""
+    import subprocess as _sp
+    repo_dir = os.path.dirname(os.path.dirname(__file__))
+    log = "/tmp/safeeye_deploy.log"
+
+    with open(log, "a") as lf:
+        lf.write(f"\n{'='*40}\n{datetime.now().isoformat()} — Deploy started\n")
+
+        # Git pull (works if .git is available via volume or we're on host)
+        try:
+            r = _sp.run(["git", "pull", "origin", "main"], capture_output=True, text=True, cwd=repo_dir, timeout=30)
+            lf.write(f"git pull: {r.stdout}\n{r.stderr}\n")
+        except Exception as e:
+            lf.write(f"git pull failed: {e}\n")
+
+        # If docker socket is mounted, rebuild
+        try:
+            r = _sp.run(["docker", "compose", "up", "-d", "--build", "safeeye"],
+                        capture_output=True, text=True, cwd=repo_dir, timeout=120)
+            lf.write(f"docker compose: {r.stdout}\n{r.stderr}\n")
+        except FileNotFoundError:
+            # No docker CLI in container — try just git pull (static files update via volume mount)
+            lf.write("docker CLI not available — static files updated via volume mount\n")
+        except Exception as e:
+            lf.write(f"docker compose failed: {e}\n")
+
+        lf.write(f"{datetime.now().isoformat()} — Deploy finished\n")
+
+
 @app.post("/api/v1/admin/deploy")
 async def trigger_deploy(authorization: str = Header(None)):
-    """Trigger auto-deploy: git pull + rebuild + sync demo."""
+    """Trigger auto-deploy: git pull + rebuild."""
     await require_master(authorization)
-    import subprocess as _sp
-    script = os.path.join(os.path.dirname(__file__), "auto_deploy.sh")
-    _sp.Popen(["bash", script], stdout=open("/tmp/safeeye_deploy.log", "a"), stderr=_sp.STDOUT,
-              cwd=os.path.dirname(os.path.dirname(__file__)))
+    import threading
+    threading.Thread(target=_run_deploy, daemon=True).start()
     return {"status": "deploying", "log": "/tmp/safeeye_deploy.log"}
+
+
+@app.get("/api/v1/admin/deploy/status")
+async def deploy_status(authorization: str = Header(None)):
+    """Check deploy log."""
+    await require_master(authorization)
+    try:
+        with open("/tmp/safeeye_deploy.log") as f:
+            lines = f.readlines()
+        return {"status": "ok", "log": "".join(lines[-30:])}
+    except FileNotFoundError:
+        return {"status": "ok", "log": "No deploys yet"}
 
 
 @app.post("/api/v1/webhook/github")
@@ -2016,10 +2056,8 @@ async def github_webhook(body: dict):
     """GitHub webhook — auto-deploy on push to main."""
     if body.get("ref") != "refs/heads/main":
         return {"status": "ignored"}
-    import subprocess as _sp
-    script = os.path.join(os.path.dirname(__file__), "auto_deploy.sh")
-    _sp.Popen(["bash", script], stdout=open("/tmp/safeeye_deploy.log", "a"), stderr=_sp.STDOUT,
-              cwd=os.path.dirname(os.path.dirname(__file__)))
+    import threading
+    threading.Thread(target=_run_deploy, daemon=True).start()
     logger.info("GitHub webhook: deploy triggered")
     return {"status": "deploying"}
 

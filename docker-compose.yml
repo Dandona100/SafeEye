@@ -11,6 +11,8 @@ services:
       - ./data:/app/data
       - /etc/nginx:/etc/nginx
       - /usr/sbin/nginx:/usr/sbin/nginx:ro
+      - ./nsfw_scanner/static:/app/nsfw_scanner/static
+      - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       resources:
         limits:
