@@ -2109,6 +2109,37 @@ async def network_stats():
     }
 
 
+# ========== Extension Pairing ==========
+
+_pairing_codes: dict[str, dict] = {}  # code -> {token, expires}
+
+@app.post("/api/v1/extension/pair/create")
+async def create_pairing_code(authorization: str = Header(None)):
+    """Generate a 6-digit pairing code for the browser extension. Returns code valid for 5 min."""
+    token_data = await require_token(authorization)
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    code = f"{_secrets.randbelow(900000) + 100000}"
+    _pairing_codes[code] = {"token": raw_token, "expires": _time.time() + 300}
+    return {"code": code, "expires_in": 300}
+
+
+@app.post("/api/v1/extension/pair/redeem")
+async def redeem_pairing_code(body: dict):
+    """Redeem a pairing code to get the API token. No auth required."""
+    code = body.get("code", "").strip()
+    if not code:
+        raise HTTPException(400, "code required")
+    entry = _pairing_codes.get(code)
+    if not entry:
+        raise HTTPException(401, "Invalid or expired code")
+    if _time.time() > entry["expires"]:
+        del _pairing_codes[code]
+        raise HTTPException(401, "Code expired")
+    token = entry["token"]
+    del _pairing_codes[code]
+    return {"status": "paired", "token": token}
+
+
 # ========== Telegram Auth (for domain access) ==========
 
 import secrets as _secrets

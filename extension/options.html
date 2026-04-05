@@ -5,7 +5,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 400px;
+      width: 420px;
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 13px;
       color: #1e293b;
@@ -21,23 +21,37 @@
       gap: 8px;
     }
     h1 img { width: 22px; height: 22px; }
-
-    .field {
-      margin-bottom: 14px;
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #e2e8f0;
     }
+    .tab {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #94a3b8;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all .15s;
+    }
+    .tab.active { color: #6366f1; border-bottom-color: #6366f1; }
+    .tab:hover { color: #475569; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .field { margin-bottom: 14px; }
     label {
       display: block;
       font-weight: 500;
       margin-bottom: 4px;
       color: #334155;
     }
-    label .hint {
-      font-weight: 400;
-      color: #94a3b8;
-      font-size: 11px;
-    }
-    input[type="text"],
-    input[type="password"] {
+    label .hint { font-weight: 400; color: #94a3b8; font-size: 11px; }
+    input[type="text"], input[type="password"] {
       width: 100%;
       padding: 8px 10px;
       border: 1px solid #cbd5e1;
@@ -47,18 +61,14 @@
       background: #fff;
       transition: border-color 0.15s;
     }
-    input:focus {
-      outline: none;
-      border-color: #6366f1;
-      box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+    input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+    .pairing-code-input {
+      text-align: center;
+      font-size: 24px;
+      letter-spacing: 0.3em;
+      padding: 12px;
     }
-
-    .actions {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-top: 18px;
-    }
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 18px; }
     button {
       padding: 8px 18px;
       border: none;
@@ -68,17 +78,12 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    .btn-primary {
-      background: #6366f1;
-      color: #fff;
-    }
+    .btn-primary { background: #6366f1; color: #fff; }
     .btn-primary:hover { background: #4f46e5; }
-    .btn-test {
-      background: #e2e8f0;
-      color: #334155;
-    }
+    .btn-test { background: #e2e8f0; color: #334155; }
     .btn-test:hover { background: #cbd5e1; }
-
+    .btn-tg { background: #0088cc; color: #fff; }
+    .btn-tg:hover { background: #006daa; }
     .status {
       margin-top: 12px;
       padding: 8px 12px;
@@ -86,36 +91,82 @@
       font-size: 12px;
       display: none;
     }
-    .status.ok {
-      display: block;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      color: #16a34a;
+    .status.ok { display: block; background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+    .status.fail { display: block; background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .status.info { display: block; background: #eef2ff; border: 1px solid #c7d2fe; color: #6366f1; }
+    .connected-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+      background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a;
+      margin-bottom: 14px;
     }
-    .status.fail {
-      display: block;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
-    }
+    .connected-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+    p.help { color: #94a3b8; font-size: 11px; line-height: 1.6; margin-top: 8px; }
   </style>
 </head>
 <body>
   <h1><img src="icon.png" alt=""> SafeEyes Settings</h1>
 
-  <div class="field">
-    <label>Server URL <span class="hint">(your SafeEyes instance)</span></label>
-    <input type="text" id="serverUrl" placeholder="http://localhost:1985">
+  <div id="connected-info" style="display:none">
+    <div class="connected-badge"><span class="dot"></span> Connected</div>
   </div>
 
-  <div class="field">
-    <label>API Token <span class="hint">(required)</span></label>
-    <input type="password" id="apiToken" placeholder="se_...">
+  <div class="tabs">
+    <button class="tab active" data-tab="pair">🔑 Pairing Code</button>
+    <button class="tab" data-tab="telegram">💬 Telegram</button>
+    <button class="tab" data-tab="manual">⚙️ Manual</button>
   </div>
 
-  <div class="actions">
-    <button class="btn-primary" id="saveBtn">Save</button>
-    <button class="btn-test" id="testBtn">Test Connection</button>
+  <!-- Pairing Code tab -->
+  <div class="panel active" id="panel-pair">
+    <div class="field">
+      <label>Server URL <span class="hint">(your SafeEyes instance)</span></label>
+      <input type="text" id="pairUrl" placeholder="http://localhost:1985">
+    </div>
+    <div class="field">
+      <label>Pairing Code <span class="hint">(from Dashboard → Integrations)</span></label>
+      <input type="text" id="pairCode" class="pairing-code-input" placeholder="000000" maxlength="6">
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="pairBtn">Connect</button>
+    </div>
+    <p class="help">Open your SafeEyes dashboard → Integrations → "Generate Pairing Code" and enter the 6-digit code above.</p>
+  </div>
+
+  <!-- Telegram tab -->
+  <div class="panel" id="panel-telegram">
+    <div class="field">
+      <label>Server URL</label>
+      <input type="text" id="tgUrl" placeholder="https://your-domain.com">
+    </div>
+    <div class="field">
+      <label>Telegram Username</label>
+      <input type="text" id="tgUsername" placeholder="@username">
+    </div>
+    <div id="tgCodeField" style="display:none" class="field">
+      <label>Verification Code <span class="hint">(sent to your Telegram)</span></label>
+      <input type="text" id="tgCode" class="pairing-code-input" placeholder="000000" maxlength="6">
+    </div>
+    <div class="actions">
+      <button class="btn-tg" id="tgBtn">Send Code</button>
+    </div>
+    <p class="help">Your SafeEyes server must have a Telegram bot configured. The bot will send you a login code.</p>
+  </div>
+
+  <!-- Manual tab -->
+  <div class="panel" id="panel-manual">
+    <div class="field">
+      <label>Server URL <span class="hint">(your SafeEyes instance)</span></label>
+      <input type="text" id="serverUrl" placeholder="http://localhost:1985">
+    </div>
+    <div class="field">
+      <label>API Token <span class="hint">(required)</span></label>
+      <input type="password" id="apiToken" placeholder="your-token">
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="saveBtn">Save</button>
+      <button class="btn-test" id="testBtn">Test Connection</button>
+    </div>
   </div>
 
   <div class="status" id="status"></div>

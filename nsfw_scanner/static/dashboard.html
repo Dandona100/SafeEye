@@ -574,26 +574,52 @@ function Expandable({ title, icon, children, defaultOpen }) {
 function OverviewTab({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [data, setData] = useState(null);
-    useEffect(() => { api.fetchApi('/api/v1/stats').then(setData).catch(() => {}); }, []);
+    const [history, setHistory] = useState([]);
+    const [showLatencyTip, setShowLatencyTip] = useState(false);
+    useEffect(() => {
+        api.fetchApi('/api/v1/stats').then(setData).catch(() => {});
+        api.fetchApi('/api/v1/stats/history?limit=5').then(setHistory).catch(() => {});
+    }, []);
     if (!data) return <SkeletonLoader type="stats" count={4} />;
+
+    // #1 — Color-coded latency
+    const latMs = data.avg_scan_ms || 0;
+    const latColor = latMs < 800 ? '#2D8A56' : latMs < 3000 ? '#D4A017' : '#C0392B';
 
     const stats = [
         { icon: '📊', label: i18n.t('total_scans'), value: data.total_scans, color: '#C9A962' },
         { icon: '🚨', label: i18n.t('nsfw_detected'), value: data.nsfw_detected, sub: `${data.nsfw_rate}%`, color: '#C0392B' },
         { icon: '📅', label: i18n.t('today'), value: data.scans_today, color: '#2D8A56' },
-        { icon: '⚡', label: i18n.t('avg_latency'), value: `${data.avg_scan_ms}ms`, color: '#A68B4B' },
+        { icon: '⚡', label: i18n.t('avg_latency'), value: `${latMs}ms`, color: latColor },
     ];
+
+    // #4 — Provider type detection
+    const localProviders = ['nudenet', 'deepfake_check', 'audio_check', 'marqo_nsfw', 'falconsai_nsfw', 'freepik_nsfw', 'siglip_nsfw', 'bumble_nsfw', 'nsfwjs', 'deepfake_v2', 'yolo_weapons', 'detoxify', 'hatespeech'];
 
     return (
         <div className="space-y-6 stagger">
             {/* Hero stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {stats.map((s, i) => (
-                    <div key={i} className="card p-6 text-center">
+                    <div key={i} className="card p-6 text-center" style={{ position: 'relative' }}>
                         <div className="text-3xl mb-3">{s.icon}</div>
                         <div className="text-3xl font-bold" style={{ fontFamily: 'Playfair Display, serif', color: s.color }} dir="ltr">{s.value}</div>
                         <div className="text-muted text-sm mt-1">{s.label}</div>
                         {s.sub && <div className="text-muted/70 text-xs mt-1" dir="ltr">{s.sub}</div>}
+                        {/* #1 — Latency "Why?" tooltip */}
+                        {i === 3 && latMs > 800 && (
+                            <div>
+                                <button onClick={() => setShowLatencyTip(!showLatencyTip)}
+                                    className="text-xs text-gold-dark mt-1" style={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                                    {he ? 'למה?' : 'Why?'}
+                                </button>
+                                {showLatencyTip && (
+                                    <div className="text-xs text-muted mt-2 p-2 bg-warm rounded" dir={he ? 'rtl' : 'ltr'}>
+                                        {he ? 'NudeNet רץ על CPU. לתוצאות מהירות (<200ms) השתמשו ב-GPU או ספקי ענן.' : 'NudeNet runs on CPU. For faster results (<200ms), use GPU or cloud providers.'}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -606,8 +632,12 @@ function OverviewTab({ api, i18n }) {
                         <div className="flex justify-between"><span className="text-muted">{i18n.t('total_scans')}</span><span className="text-ink font-medium" dir="ltr">{data.total_scans}</span></div>
                         <div className="flex justify-between"><span className="text-muted">{i18n.t('nsfw_detected')}</span><span className="text-red-600 font-medium" dir="ltr">{data.nsfw_detected} ({data.nsfw_rate}%)</span></div>
                         <div className="flex justify-between"><span className="text-muted">{i18n.t('borderline')}</span><span className="text-ink" dir="ltr">{data.borderline_count}</span></div>
-                        <div className="flex justify-between"><span className="text-muted">{i18n.t('avg_latency')}</span><span className="text-ink" dir="ltr">{data.avg_scan_ms}ms</span></div>
+                        <div className="flex justify-between"><span className="text-muted">{i18n.t('avg_latency')}</span><span style={{ color: latColor }} dir="ltr">{data.avg_scan_ms}ms</span></div>
                     </div>
+                    {/* #2 — Empty state help */}
+                    {data.total_scans === 0 && (
+                        <p className="text-xs text-gold-dark mt-3 p-2 bg-warm rounded">{he ? '💡 אין סריקות עדיין. נסו לשלוח תמונה דרך ה-API או הטרמינל בטאב API.' : '💡 No scans yet. Try sending an image via the API or the terminal in the API tab.'}</p>
+                    )}
                 </div>
                 <div className="card p-6">
                     <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🚫 {i18n.t('domain_blocklist')}</h3>
@@ -616,21 +646,59 @@ function OverviewTab({ api, i18n }) {
                         <div className="flex justify-between"><span className="text-muted">Regex Patterns</span><span className="text-ink" dir="ltr">50+</span></div>
                         <div className="flex justify-between"><span className="text-muted">Short URL Services</span><span className="text-ink" dir="ltr">20+</span></div>
                     </div>
+                    {/* #2 — Empty state */}
+                    {data.blocklist_size === 0 && (
+                        <p className="text-xs text-gold-dark mt-3 p-2 bg-warm rounded" dir="ltr">💡 No blocklist loaded. Place nsfw_domains.txt in the project root.</p>
+                    )}
                 </div>
             </div>
 
-            {/* Active providers */}
+            {/* #4 — Active providers with type indicators */}
             <div className="card p-6">
                 <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>⚙️ {i18n.t('active_providers')}</h3>
                 {data.providers_active.length > 0
-                    ? <div className="flex gap-3 flex-wrap">{data.providers_active.map(p =>
-                        <span key={p} className="px-4 py-2 bg-green-50 text-green-700 rounded-full text-sm font-medium border border-green-200"><span className="status-dot active" style={{marginRight:'6px'}}></span>{p}</span>
-                    )}</div>
+                    ? <div className="flex gap-3 flex-wrap">{data.providers_active.map(p => {
+                        const isLocal = localProviders.includes(p);
+                        return (
+                            <span key={p} className="px-4 py-2 rounded-full text-sm font-medium border" style={{
+                                background: isLocal ? '#F0FFF4' : '#EBF5FF',
+                                color: isLocal ? '#2D8A56' : '#1565C0',
+                                borderColor: isLocal ? '#A5D6A7' : '#90CAF9',
+                            }}>
+                                <span style={{ marginRight: '4px' }}>{isLocal ? '🟢' : '🔵'}</span>
+                                {p} <span className="text-xs opacity-60">({isLocal ? 'Local' : 'Cloud'})</span>
+                            </span>
+                        );
+                    })}</div>
                     : <span className="text-muted/70">{i18n.t('none_configured')}</span>
                 }
+                {/* #2 — Empty state */}
+                {data.providers_active.length === 0 && (
+                    <p className="text-xs text-gold-dark mt-3 p-2 bg-warm rounded">{he ? '💡 אין ספקים פעילים. עברו לטאב חיבורים כדי להתקין או להגדיר.' : '💡 No active providers. Go to Integrations tab to install or configure.'}</p>
+                )}
             </div>
 
-            {/* Analytics — local instance only */}
+            {/* #3 — Recent Activity feed */}
+            {history.length > 0 && (
+                <div className="card p-6">
+                    <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>📡 {he ? 'פעילות אחרונה' : 'Recent Activity'}</h3>
+                    <div className="space-y-2">
+                        {history.map((h, i) => (
+                            <div key={i} className="flex items-center gap-3 text-xs p-2 bg-warm rounded" style={{ animationDelay: `${i * 100}ms` }}>
+                                <span className="text-muted/60 font-mono" dir="ltr">{new Date(h.timestamp).toLocaleTimeString()}</span>
+                                <span>{h.is_nsfw ? '🚨' : '✅'}</span>
+                                <span className={h.is_nsfw ? 'text-red-600' : 'text-green-700'}>
+                                    {h.is_nsfw ? 'NSFW' : 'Clean'}
+                                </span>
+                                <span className="text-muted" dir="ltr">{((h.confidence || 0) * 100).toFixed(0)}%</span>
+                                <span className="text-muted/60">{h.providers_agree}/{h.providers_total}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* #5 — Analytics + Star on GitHub */}
             <AnalyticsCard api={api} i18n={i18n} />
 
             {/* Client-side pre-scan toggle */}
@@ -1034,6 +1102,56 @@ const PROVIDER_DEFS = [
     },
 ];
 
+function ExtensionPairing({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [code, setCode] = useState('');
+    const [expires, setExpires] = useState(0);
+    const [generating, setGenerating] = useState(false);
+
+    const generate = async () => {
+        setGenerating(true);
+        try {
+            const res = await api.postApi('/api/v1/extension/pair/create', {});
+            if (res.code) {
+                setCode(res.code);
+                setExpires(Date.now() + (res.expires_in || 300) * 1000);
+            }
+        } catch {}
+        setGenerating(false);
+    };
+
+    const isExpired = expires && Date.now() > expires;
+
+    return (
+        <div className="card p-6">
+            <div className="flex items-start gap-4">
+                <div className="text-3xl">🔌</div>
+                <div className="flex-1">
+                    <h4 className="font-bold text-ink mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>
+                        {he ? 'חיבור תוסף לדפדפן' : 'Connect Browser Extension'}
+                    </h4>
+                    <p className="text-muted text-xs mb-3">
+                        {he ? 'צרו קוד חיבור והכניסו אותו בתוסף. תוקף 5 דקות.' : 'Generate a pairing code and enter it in the extension. Valid for 5 minutes.'}
+                    </p>
+                    {!code || isExpired ? (
+                        <button className="btn btn-green" onClick={generate} disabled={generating}>
+                            {generating ? '...' : (he ? '🔑 צור קוד חיבור' : '🔑 Generate Pairing Code')}
+                        </button>
+                    ) : (
+                        <div>
+                            <div className="bg-ink rounded-lg p-4 text-center mb-2" dir="ltr">
+                                <span style={{ fontFamily: 'Fira Code, monospace', fontSize: '2rem', letterSpacing: '0.3em', color: '#C9A962' }}>{code}</span>
+                            </div>
+                            <p className="text-xs text-muted text-center">{he ? 'הכניסו קוד זה בתוסף הדפדפן' : 'Enter this code in the browser extension'}</p>
+                            <button className="text-xs text-gold-dark mt-2" style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={generate}>{he ? 'צור קוד חדש' : 'Generate new code'}</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function IntegrationsTab({ api, i18n }) {
     const [providers, setProviders] = useState(null);
     const [forms, setForms] = useState({});
@@ -1098,6 +1216,10 @@ function IntegrationsTab({ api, i18n }) {
                 <p className="text-muted text-sm mt-1">{he ? 'חברו ספקים נוספים לסריקה מדויקת יותר' : 'Connect additional providers for better accuracy'}</p>
             </div>
             {msg && <div className="text-center text-lg">{msg}</div>}
+
+            {/* Extension Pairing */}
+            <ExtensionPairing api={api} i18n={i18n} />
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {PROVIDER_DEFS.map(def => {
                     const isConnected = def.local || providers[def.key]?.configured;
@@ -1346,7 +1468,7 @@ function AnalyticsCard({ api, i18n }) {
                 <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>📈 {he ? 'אנליטיקס' : 'Analytics'}</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                     {[
-                        { icon: '⭐', label: 'Stars', value: gh.stars || 0 },
+                        { icon: '⭐', label: 'Stars', value: gh.stars || 0, link: 'https://github.com/Dandona100/SafeEye' },
                         { icon: '🍴', label: 'Forks', value: gh.forks || 0 },
                         { icon: '📊', label: he ? 'סריקות' : 'Scans', value: usage.total_scans || 0 },
                         { icon: '🔑', label: he ? 'טוקנים' : 'Tokens', value: usage.total_tokens || 0 },
@@ -1355,6 +1477,7 @@ function AnalyticsCard({ api, i18n }) {
                             <div className="text-xl mb-1">{s.icon}</div>
                             <div className="text-lg font-bold text-ink">{s.value}</div>
                             <div className="text-xs text-muted">{s.label}</div>
+                            {s.link && <a href={s.link} target="_blank" rel="noopener" className="inline-block mt-1 text-xs px-3 py-1 rounded-full" style={{ background: '#C9A962', color: 'white', textDecoration: 'none', fontSize: '.7rem' }}>{he ? '⭐ תנו כוכב!' : '⭐ Star us!'}</a>}
                         </div>
                     ))}
                 </div>
