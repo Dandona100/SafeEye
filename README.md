@@ -62,11 +62,10 @@ Install only what you need — each activates automatically.
 ```bash
 git clone https://github.com/Dandona100/SafeEye.git
 cd SafeEye
-cp .env.example .env
-# Edit .env — set SCAN_API_MASTER_TOKEN
-
 docker compose up -d
 ```
+
+That's it. A master token is auto-generated on first run — check the logs with `docker compose logs` to see it.
 
 Dashboard: http://localhost:1985/dashboard
 Health: http://localhost:1985/health

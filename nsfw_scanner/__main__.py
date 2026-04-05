@@ -36,6 +36,18 @@ port = find_available_port(port)
 ip = get_public_ip()
 user = get_user()
 master = os.environ.get("SCAN_API_MASTER_TOKEN", "")
+if not master:
+    # Auto-generate master token on first run
+    import secrets as _secrets
+    master = _secrets.token_urlsafe(32)
+    os.environ["SCAN_API_MASTER_TOKEN"] = master
+    # Try to persist to .env file
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    try:
+        with open(_env_path, "a") as _f:
+            _f.write(f"\nSCAN_API_MASTER_TOKEN={master}\n")
+    except OSError:
+        pass  # read-only FS, user will see token in logs
 
 log_level = os.environ.get("LOG_LEVEL", "info").lower()
 
@@ -92,10 +104,7 @@ if warnings:
     for w in warnings:
         print(w)
 print()
-if master:
-    print(f"  🔑 Master Token: {master[:8]}...")
-else:
-    print("  ⚠️  No SCAN_API_MASTER_TOKEN set! Set it in .env")
+print(f"  🔑 Master Token: {master[:8]}... (saved to .env)")
 print()
 print("  📋 No domain? Use SSH tunnel from your computer:")
 print(f"     ssh -L {port}:localhost:{port} {user}@{ip}")
