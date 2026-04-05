@@ -1553,6 +1553,117 @@ async def setup_nginx(body: dict, authorization: str = Header(None)):
                 "command": f"sudo {script} {domain} {port}"}
 
 
+@app.post("/api/v1/admin/domain/setup-path")
+async def setup_path_auto(body: dict, authorization: str = Header(None)):
+    """Auto-add a location block to existing nginx config for path-based setup."""
+    await require_master(authorization)
+    domain = body.get("domain", "").strip()
+    path_prefix = body.get("path", "").strip().strip("/")
+    port = int(os.environ.get("SCAN_PORT", 1985))
+
+    if not domain or not path_prefix:
+        raise HTTPException(400, "Domain and path required")
+
+    # Find nginx config for this domain
+    import glob as _glob
+    nginx_conf = None
+    search_paths = [
+        f"/etc/nginx/sites-enabled/{domain}",
+        f"/etc/nginx/sites-enabled/{domain}.conf",
+        f"/etc/nginx/sites-available/{domain}",
+        f"/etc/nginx/sites-available/{domain}.conf",
+        f"/etc/nginx/conf.d/{domain}.conf",
+    ]
+    # Also search wildcard
+    for pattern in ["/etc/nginx/sites-enabled/*", "/etc/nginx/conf.d/*.conf"]:
+        for f in _glob.glob(pattern):
+            try:
+                content = open(f).read()
+                if f"server_name {domain}" in content or f"server_name *.{domain.split('.',1)[-1]}" in content:
+                    nginx_conf = f
+                    break
+            except (OSError, PermissionError):
+                pass
+        if nginx_conf:
+            break
+
+    if not nginx_conf:
+        for p in search_paths:
+            if os.path.exists(p):
+                nginx_conf = p
+                break
+
+    if not nginx_conf:
+        return {
+            "status": "not_found",
+            "message": f"Nginx config for {domain} not found",
+            "searched": search_paths[:3],
+            "snippet": _nginx_location_block(path_prefix, port),
+        }
+
+    # Read current config and check if location already exists
+    try:
+        with open(nginx_conf) as f:
+            content = f.read()
+    except PermissionError:
+        return {
+            "status": "permission_denied",
+            "config_file": nginx_conf,
+            "snippet": _nginx_location_block(path_prefix, port),
+            "command": f"echo '{_nginx_location_block(path_prefix, port)}' | sudo tee -a {nginx_conf} && sudo nginx -t && sudo nginx -s reload",
+        }
+
+    if f"location /{path_prefix}" in content:
+        return {"status": "exists", "message": f"Location /{path_prefix} already exists in {nginx_conf}", "config_file": nginx_conf}
+
+    # Insert before the last closing brace (end of server block)
+    snippet = _nginx_location_block(path_prefix, port)
+    lines = content.rstrip().rsplit("}", 1)
+    if len(lines) == 2:
+        new_content = lines[0] + "\n" + snippet + "\n}\n"
+    else:
+        return {"status": "parse_error", "message": "Could not find server block closing brace", "config_file": nginx_conf, "snippet": snippet}
+
+    # Write back (needs sudo)
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["sudo", "-n", "tee", nginx_conf],
+            input=new_content.encode(), capture_output=True, timeout=10,
+        )
+        if proc.returncode != 0:
+            return {
+                "status": "permission_denied",
+                "config_file": nginx_conf,
+                "snippet": snippet,
+                "command": f"sudo nano {nginx_conf}  # add the location block, then: sudo nginx -t && sudo nginx -s reload",
+            }
+
+        # Test and reload
+        test = subprocess.run(["sudo", "-n", "nginx", "-t"], capture_output=True, text=True, timeout=10)
+        if test.returncode != 0:
+            return {"status": "config_error", "message": test.stderr, "config_file": nginx_conf}
+
+        subprocess.run(["sudo", "-n", "nginx", "-s", "reload"], capture_output=True, timeout=10)
+
+        await database.save_provider_config("SAFEEYE_DOMAIN", f"{domain}/{path_prefix}")
+        return {"status": "ok", "config_file": nginx_conf, "path": f"/{path_prefix}", "url": f"https://{domain}/{path_prefix}/dashboard"}
+
+    except Exception as e:
+        return {"status": "manual_required", "message": str(e), "config_file": nginx_conf, "snippet": snippet}
+
+
+def _nginx_location_block(path: str, port: int) -> str:
+    return f"""    location /{path} {{
+        proxy_pass http://127.0.0.1:{port}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
+    }}"""
+
+
 # ========== Telegram Verification ==========
 
 import secrets as _secrets

@@ -1747,9 +1747,29 @@ function DomainTab({ api, i18n }) {
                             </div>
                             {baseDomain && pathPrefix && (
                                 <div className="fade-in">
-                                    <p className="text-muted text-xs mb-2">{he ? 'הוסיפו לקונפיגורציית nginx של הדומיין:' : 'Add to your domain\'s nginx config:'}</p>
-                                    <div className="bg-ink rounded p-3 font-mono text-xs text-gray-300 mb-2 overflow-x-auto" dir="ltr">
-                                        <pre>{`location /${pathPrefix} {
+                                    <button className="btn btn-green w-full mb-3" onClick={async () => {
+                                        setStatus(he ? '⏳ מחפש קובץ nginx ומגדיר...' : '⏳ Finding nginx config and setting up...');
+                                        const res = await api.postApi('/api/v1/admin/domain/setup-path', { domain: baseDomain, path: pathPrefix });
+                                        if (res.status === 'ok') {
+                                            setStatus(`✅ ${he ? 'הוגדר!' : 'Configured!'} ${res.url}\n${he ? 'קובץ:' : 'File:'} ${res.config_file}`);
+                                            setStep(3); setDomain(`${baseDomain}/${pathPrefix}`);
+                                            api.fetchApi('/api/v1/admin/domain').then(setConfig);
+                                        } else if (res.status === 'exists') {
+                                            setStatus(`✅ ${he ? 'כבר קיים!' : 'Already exists!'} ${res.config_file}`);
+                                        } else if (res.status === 'permission_denied' || res.status === 'manual_required') {
+                                            setStatus(`⚠️ ${he ? 'צריך הרשאות. הריצו:' : 'Needs permissions. Run:'}\n${res.command || ''}`);
+                                        } else if (res.status === 'not_found') {
+                                            setStatus(`⚠️ ${he ? 'קובץ nginx לא נמצא. הוסיפו ידנית:' : 'Nginx config not found. Add manually:'}\n${res.snippet || ''}`);
+                                        } else {
+                                            setStatus(`❌ ${res.message || 'Setup failed'}`);
+                                        }
+                                    }}>
+                                        ⚡ {he ? 'הגדר אוטומטית (מוצא nginx ומוסיף)' : 'Auto Setup (find nginx & add)'}
+                                    </button>
+                                    <details className="text-xs text-muted">
+                                        <summary className="cursor-pointer">{he ? 'הצג הגדרה ידנית' : 'Show manual config'}</summary>
+                                        <div className="bg-ink rounded p-3 font-mono text-xs text-gray-300 mt-2 overflow-x-auto" dir="ltr">
+                                            <pre>{`location /${pathPrefix} {
     proxy_pass http://127.0.0.1:${config.port}/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -1757,17 +1777,8 @@ function DomainTab({ api, i18n }) {
     proxy_set_header X-Forwarded-Proto $scheme;
     client_max_body_size 50M;
 }`}</pre>
-                                    </div>
-                                    <p className="text-muted/70 text-xs mb-2">{he ? 'ואז:' : 'Then:'} <code className="text-muted">sudo nginx -t && sudo nginx -s reload</code></p>
-                                    <button className="btn btn-green w-full" onClick={async () => {
-                                        const full = `${baseDomain}/${pathPrefix}`;
-                                        await api.postApi('/api/v1/admin/domain/setup-dns', { domain: full, cloudflare_token: '' });
-                                        setStatus(`✅ ${he ? 'נשמר!' : 'Saved!'} https://${full}/dashboard`);
-                                        setStep(3); setDomain(full);
-                                        api.fetchApi('/api/v1/admin/domain').then(setConfig);
-                                    }}>
-                                        💾 {he ? 'שמור הגדרה' : 'Save config'}
-                                    </button>
+                                        </div>
+                                    </details>
                                 </div>
                             )}
                         </div>
