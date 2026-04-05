@@ -618,6 +618,112 @@ def cmd_update_check(args):
 
 # -- Config --
 
+def cmd_set(args):
+    """Set up domain, DNS, nginx, or other server configuration."""
+    target = args.target
+    value = args.set_value
+
+    if target == "domain":
+        if not value:
+            _die("Usage: safeeye set domain DOMAIN_NAME")
+        # Detect DNS provider
+        _info(f"Detecting DNS for {value}...")
+        dns = _api("POST", "/api/v1/admin/domain/detect-dns", json={"domain": value})
+        provider = dns.get("provider", "unknown")
+        auto = dns.get("auto_dns_supported", False)
+        ns = ", ".join(dns.get("ns_records", [])[:3])
+        print(f"  DNS Provider: {bold(provider)}")
+        if ns:
+            print(f"  NS Records:   {dim(ns)}")
+
+        if auto:
+            print(f"\n  {green('✅ Cloudflare detected — auto-setup available')}")
+            cf_token = args.cloudflare_token or os.environ.get("CLOUDFLARE_API_TOKEN", "")
+            if not cf_token:
+                cf_token = input(f"  Enter Cloudflare API Token: ").strip()
+            if cf_token:
+                _info("Setting up DNS + Nginx + SSL...")
+                res = _api("POST", "/api/v1/admin/domain/setup-dns", json={"domain": value, "cloudflare_token": cf_token})
+                if res.get("status") == "ok":
+                    _success(f"DNS {res.get('action', 'configured')}: {value} → {res.get('ip')}")
+                    # Now set up nginx
+                    _info("Configuring Nginx + SSL...")
+                    nginx_res = _api("POST", "/api/v1/admin/domain/setup-nginx", json={"domain": value})
+                    if nginx_res.get("status") == "ok":
+                        _success(f"Nginx + SSL configured! https://{value}/dashboard")
+                    elif nginx_res.get("status") == "manual_required":
+                        print(f"\n  {yellow('⚠️  Nginx needs sudo. Run manually:')}")
+                        print(f"  {dim(nginx_res.get('command', ''))}")
+                    else:
+                        print(f"  {red('❌')} {nginx_res.get('message', 'Nginx setup failed')}")
+                else:
+                    _die(res.get("message", "DNS setup failed"))
+            else:
+                _die("Cloudflare token required for auto-setup")
+        else:
+            print(f"\n  {yellow('📋 Manual DNS setup required:')}")
+            server_ip = dns.get("server_ip", "YOUR_SERVER_IP")
+            print(f"  Type:  {bold('A')}")
+            print(f"  Name:  {bold(value)}")
+            print(f"  Value: {bold(server_ip)}")
+            print(f"\n  After adding the DNS record, run:")
+            print(f"  {cyan(f'safeeye set nginx {value}')}")
+
+    elif target == "nginx":
+        if not value:
+            _die("Usage: safeeye set nginx DOMAIN_NAME")
+        _info(f"Setting up Nginx + SSL for {value}...")
+        res = _api("POST", "/api/v1/admin/domain/setup-nginx", json={"domain": value})
+        if res.get("status") == "ok":
+            _success(f"Nginx + SSL configured! https://{value}/dashboard")
+            if res.get("output"):
+                print(f"\n{dim(res['output'][-300:])}")
+        elif res.get("status") == "manual_required":
+            print(f"\n  {yellow('⚠️  Needs sudo. Run manually:')}")
+            print(f"  {dim(res.get('command', ''))}")
+        else:
+            _die(res.get("message", "Nginx setup failed"))
+
+    elif target == "dns":
+        if not value:
+            _die("Usage: safeeye set dns DOMAIN_NAME")
+        cf_token = args.cloudflare_token or os.environ.get("CLOUDFLARE_API_TOKEN", "")
+        if not cf_token:
+            cf_token = input("  Enter Cloudflare API Token: ").strip()
+        if not cf_token:
+            _die("Cloudflare token required")
+        _info(f"Creating DNS A record for {value}...")
+        res = _api("POST", "/api/v1/admin/domain/setup-dns", json={"domain": value, "cloudflare_token": cf_token})
+        if res.get("status") == "ok":
+            _success(f"DNS {res.get('action', 'configured')}: {value} → {res.get('ip')}")
+        else:
+            _die(res.get("message", "DNS setup failed"))
+
+    elif target == "direct":
+        if not value:
+            _die("Usage: safeeye set direct DOMAIN_NAME")
+        _info(f"Saving domain {value} (direct mode, no nginx)...")
+        res = _api("POST", "/api/v1/admin/domain/setup-direct", json={"domain": value})
+        if res.get("status") == "ok":
+            _success(f"Saved! Access: {res.get('access_url')}")
+        else:
+            _die(res.get("message", "Setup failed"))
+
+    elif target == "port":
+        if not value:
+            _die("Usage: safeeye set port PORT_NUMBER")
+        _info(f"Port changes require editing .env (SCAN_PORT={value}) and restarting.")
+        print(f"  {dim('docker compose down && docker compose up -d')}")
+
+    elif target == "token":
+        if not value:
+            _die("Usage: safeeye set token YOUR_MASTER_TOKEN")
+        _info(f"Master token changes require editing .env (SCAN_API_MASTER_TOKEN) and restarting.")
+
+    else:
+        _die(f"Unknown target: {target}\nAvailable: domain, dns, nginx, direct, port, token")
+
+
 def cmd_config(args):
     if args.action == "set":
         if not args.key or not args.value:
@@ -694,6 +800,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  safeeye tokens list                   List API tokens\n"
             "  safeeye stats                         Overview stats\n"
             "  safeeye health                        Server health\n"
+            "  safeeye set domain scanner.example.com  Setup domain\n"
+            "  safeeye set nginx scanner.example.com   Nginx + SSL\n"
             "  safeeye config set url http://localhost:1985\n"
         ),
     )
@@ -775,6 +883,22 @@ def build_parser() -> argparse.ArgumentParser:
     # ── update-check ──
     sub.add_parser("update-check", help="Check for SafeEye updates")
 
+    # ── set ──
+    p_set = sub.add_parser("set", help="Set up domain, DNS, nginx, etc.",
+                           epilog=(
+                               "Examples:\n"
+                               "  safeeye set domain scanner.example.com   Full setup (DNS + Nginx + SSL)\n"
+                               "  safeeye set dns scanner.example.com      DNS only (Cloudflare)\n"
+                               "  safeeye set nginx scanner.example.com    Nginx + SSL only\n"
+                               "  safeeye set direct scanner.example.com   Save domain (no nginx)\n"
+                           ),
+                           formatter_class=argparse.RawDescriptionHelpFormatter)
+    p_set.add_argument("target", choices=["domain", "dns", "nginx", "direct", "port", "token"],
+                       help="What to set up")
+    p_set.add_argument("set_value", nargs="?", default=None, help="Value (domain name, port, etc.)")
+    p_set.add_argument("--cloudflare-token", type=str, default=None,
+                       help="Cloudflare API token (or set CLOUDFLARE_API_TOKEN env)")
+
     # ── config ──
     p_config = sub.add_parser("config", help="Show or set CLI configuration")
     p_config.add_argument("action", nargs="?", default=None, choices=["set"],
@@ -802,6 +926,7 @@ _DISPATCH = {
     "analytics": cmd_analytics,
     "deploy": cmd_deploy,
     "update-check": cmd_update_check,
+    "set": cmd_set,
     "config": cmd_config,
 }
 
