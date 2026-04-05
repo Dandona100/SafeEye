@@ -1,5 +1,5 @@
 """
-Minimal Telegram bot with SafeEye content scanning.
+Minimal Telegram bot with SafeEyes content scanning.
 Scans every photo sent to the bot before forwarding.
 
 Usage:
@@ -18,7 +18,7 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 
 
 async def scan_file(file_path: str) -> dict:
-    """Scan a file with SafeEye."""
+    """Scan a file with SafeEyes."""
     async with aiohttp.ClientSession() as session:
         with open(file_path, "rb") as f:
             data = aiohttp.FormData()
@@ -44,7 +44,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scan = result.get("result", {})
     if scan.get("is_nsfw"):
         labels = ", ".join(scan.get("labels", []))
-        await update.message.reply_text(f"🚫 Content blocked by SafeEye\nDetected: {labels}")
+        await update.message.reply_text(f"🚫 Content blocked by SafeEyes\nDetected: {labels}")
         await update.message.delete()
     else:
         await update.message.reply_text("✅ Content is safe")
@@ -53,7 +53,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    print("Bot running with SafeEye scanning...")
+    print("Bot running with SafeEyes scanning...")
     app.run_polling()
 
 

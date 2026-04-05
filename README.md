@@ -1,8 +1,8 @@
-# 🛡️ SafeEye
+# 🛡️ SafeEyes
 
 **AI-powered content safety scanner** — 20 providers in parallel, REST API, webhooks, batch processing, and a React dashboard.
 
-> **הקב"ה ציווה לשמור את העיניים ממראות אסורות. SafeEye עוזרת.**
+> **הקב"ה ציווה לשמור את העיניים ממראות אסורות. SafeEyes עוזרת.**
 > 
 > 🇮🇱 Israeli open-source project. Proudly made in Israel.
 
@@ -11,7 +11,7 @@
 
 ## What It Does
 
-SafeEye scans images and videos for **pornography, violence, weapons, drugs, and offensive content** — before they reach your users.
+SafeEyes scans images and videos for **pornography, violence, weapons, drugs, and offensive content** — before they reach your users.
 
 - **20 AI providers** scan simultaneously — local models, pip-installable, and cloud APIs
 - **Smart voting** — majority rules, weighted by provider accuracy
@@ -93,7 +93,7 @@ curl -X POST http://localhost:1985/api/v1/scan/file \
 curl -X POST "http://localhost:1985/api/v1/scan/async?url=https://example.com/image.jpg&webhook_url=https://myserver.com/callback" \
   -H "Authorization: Bearer YOUR_TOKEN"
 # Returns immediately: {"job_id": "abc123", "status": "pending"}
-# SafeEye POSTs result to your webhook when done
+# SafeEyes POSTs result to your webhook when done
 ```
 
 ### Batch scan
@@ -227,7 +227,7 @@ Areas that could use love:
 
 ## Architecture Note
 
-**SafeEye does NOT store scanned files.** Files are processed in memory and deleted immediately after scanning. Only scan results (JSON metadata) are persisted in SQLite. This is by design — privacy first.
+**SafeEyes does NOT store scanned files.** Files are processed in memory and deleted immediately after scanning. Only scan results (JSON metadata) are persisted in SQLite. This is by design — privacy first.
 
 ## New Features
 
@@ -244,7 +244,7 @@ curl ".../api/v1/scan/similar?phash=ff8fc3e07018040707" -H "Authorization: Beare
 ```
 
 ### 📡 Live Stream Monitoring
-Monitor RTMP/HLS streams in real-time. SafeEye extracts frames periodically and scans them.
+Monitor RTMP/HLS streams in real-time. SafeEyes extracts frames periodically and scans them.
 
 ```bash
 # Start monitoring
@@ -261,7 +261,7 @@ curl -X POST .../api/v1/stream/stop -H "Authorization: Bearer MASTER_TOKEN" \
 ```
 
 ### 🧩 Browser Extension
-Right-click any image on the web → "Scan with SafeEye". Chrome extension included.
+Right-click any image on the web → "Scan with SafeEyes". Chrome extension included.
 
 **Install:** `chrome://extensions/` → Developer Mode → Load unpacked → select `nsfw_scanner/extension/`
 

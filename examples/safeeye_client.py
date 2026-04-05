@@ -1,7 +1,7 @@
 """
-SafeEye Python SDK Client
+SafeEyes Python SDK Client
 
-A lightweight client for the SafeEye content-safety scanner API.
+A lightweight client for the SafeEyes content-safety scanner API.
 
 Requirements:
     pip install requests
@@ -21,7 +21,7 @@ import requests
 
 
 class SafeEyeError(Exception):
-    """Raised when the SafeEye API returns an error."""
+    """Raised when the SafeEyes API returns an error."""
 
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
@@ -30,10 +30,10 @@ class SafeEyeError(Exception):
 
 
 class SafeEyeClient:
-    """Client for the SafeEye content-safety scanner API.
+    """Client for the SafeEyes content-safety scanner API.
 
     Args:
-        url: Base URL of the SafeEye server (default: http://localhost:1985).
+        url: Base URL of the SafeEyes server (default: http://localhost:1985).
         token: API bearer token. If not provided, reads from SAFEEYE_TOKEN env var.
         timeout: Request timeout in seconds (default: 60).
     """

@@ -403,7 +403,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SafeEye",
+    title="SafeEyes",
     description="AI-powered content safety scanner with multi-provider parallel detection",
     version="4.0.0",
     docs_url="/docs",
@@ -500,15 +500,19 @@ async def scan_file_endpoint(
             token_data.get("name"),
         )
 
-        # Add to in-memory vector store
+        # Add to in-memory vector store + gossip broadcast
         if result.phash:
             _vector_store.add(result.scan_id, result.phash)
+            asyncio.create_task(gossip_node.broadcast_hash({
+                "p": result.phash, "n": int(result.is_nsfw),
+                "c": round(result.confidence, 2), "l": result.labels,
+            }))
 
         # Alerts for NSFW
         if result.is_nsfw:
             await _send_telegram_alert(result.labels, result.confidence)
             asyncio.create_task(_send_email_alert(
-                "SafeEye NSFW Alert",
+                "SafeEyes NSFW Alert",
                 f"NSFW detected!\nLabels: {', '.join(result.labels)}\nConfidence: {round(result.confidence * 100)}%\nScan ID: {result.scan_id}",
             ))
 
@@ -605,15 +609,19 @@ async def scan_url_endpoint(
             token_data.get("name"),
         )
 
-        # Add to in-memory vector store
+        # Add to in-memory vector store + gossip broadcast
         if result.phash:
             _vector_store.add(result.scan_id, result.phash)
+            asyncio.create_task(gossip_node.broadcast_hash({
+                "p": result.phash, "n": int(result.is_nsfw),
+                "c": round(result.confidence, 2), "l": result.labels,
+            }))
 
         # Alerts for NSFW
         if result.is_nsfw:
             await _send_telegram_alert(result.labels, result.confidence)
             asyncio.create_task(_send_email_alert(
-                "SafeEye NSFW Alert",
+                "SafeEyes NSFW Alert",
                 f"NSFW detected!\nLabels: {', '.join(result.labels)}\nConfidence: {round(result.confidence * 100)}%\nScan ID: {result.scan_id}",
             ))
 
@@ -1889,7 +1897,7 @@ async def check_telegram_verify(body: dict, authorization: str = Header(None)):
                         # Send confirmation
                         await session.post(
                             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                            json={"chat_id": chat_id, "text": "✅ SafeEye verified! You'll receive alerts here."},
+                            json={"chat_id": chat_id, "text": "✅ SafeEyes verified! You'll receive alerts here."},
                         )
 
                         del _pending_verifications[code]
@@ -2175,7 +2183,7 @@ async def telegram_auth_request(body: dict):
             # Send code via Telegram
             async with session.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": f"🛡️ SafeEye login code:\n\n🔑 {code}\n\nExpires in 5 minutes."},
+                json={"chat_id": chat_id, "text": f"🛡️ SafeEyes login code:\n\n🔑 {code}\n\nExpires in 5 minutes."},
             ) as resp:
                 if resp.status != 200:
                     raise HTTPException(502, "Failed to send Telegram message")
@@ -2226,7 +2234,7 @@ async def export_metadata():
 
 @app.post("/api/v1/metadata/sync")
 async def sync_metadata(body: dict, _=Depends(require_master)):
-    """Import hash metadata from another SafeEye server. Master token required."""
+    """Import hash metadata from another SafeEyes server. Master token required."""
     source = body.get("source", "unknown")
     records = body.get("records", [])
     if not records:
@@ -2237,7 +2245,7 @@ async def sync_metadata(body: dict, _=Depends(require_master)):
 
 @app.post("/api/v1/metadata/subscribe")
 async def subscribe_metadata(body: dict, _=Depends(require_master)):
-    """Subscribe to another SafeEye server's metadata. Fetches and imports."""
+    """Subscribe to another SafeEyes server's metadata. Fetches and imports."""
     import aiohttp
     server_url = body.get("url", "").rstrip("/")
     if not server_url:
@@ -2447,7 +2455,7 @@ async def get_analytics(authorization: str = Header(None)):
         import aiohttp as _aio
         async with _aio.ClientSession() as session:
             async with session.get(
-                "https://api.github.com/repos/Dandona100/SafeEye",
+                "https://api.github.com/repos/Dandona100/SafeEyes",
                 headers={"Accept": "application/vnd.github.v3+json"},
                 timeout=_aio.ClientTimeout(total=5),
             ) as resp:
@@ -2631,7 +2639,7 @@ async def check_update(authorization: str = Header(None)):
         import aiohttp
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://api.github.com/repos/Dandona100/SafeEye/commits/main",
+                "https://api.github.com/repos/Dandona100/SafeEyes/commits/main",
                 headers={"Accept": "application/vnd.github.v3+json"},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
@@ -2653,7 +2661,7 @@ async def check_update(authorization: str = Header(None)):
             "remote_message": remote_msg,
             "remote_date": remote_date,
             "update_available": True,  # Since we can't compare easily, always suggest checking
-            "install_command": "cd SafeEye && git pull && docker compose up -d --build",
+            "install_command": "cd SafeEyes && git pull && docker compose up -d --build",
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}

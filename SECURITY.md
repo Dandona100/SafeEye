@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in SafeEye, please report it responsibly:
+If you discover a security vulnerability in SafeEyes, please report it responsibly:
 
 1. **Do NOT open a public issue**
 2. **Contact directly**: [Telegram @DVS20](https://t.me/DVS20)
@@ -19,7 +19,7 @@ We will respond within 48 hours and aim to release a fix within 7 days for criti
 
 ## Security Design
 
-SafeEye is designed with privacy in mind:
+SafeEyes is designed with privacy in mind:
 
 - **No file storage** — scanned files are processed in memory and deleted immediately
 - **Only metadata persisted** — scan results (JSON) are stored in SQLite, never the original files

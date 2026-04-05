@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SafeEye is an AI-powered content safety scanner. It runs up to 20 AI providers in parallel to detect NSFW content, violence, weapons, and offensive material in images and videos. Results are aggregated via weighted voting.
+SafeEyes is an AI-powered content safety scanner. It runs up to 20 AI providers in parallel to detect NSFW content, violence, weapons, and offensive material in images and videos. Results are aggregated via weighted voting.
 
 - **Backend**: Python 3.11+ / FastAPI / Uvicorn / SQLite (aiosqlite, WAL mode)
 - **Frontend**: Single-file React 18 app (`nsfw_scanner/static/dashboard.html`) — no build step, Babel compiles JSX in-browser, Tailwind CSS 4 via CDN

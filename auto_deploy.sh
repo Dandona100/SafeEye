@@ -1,5 +1,5 @@
 #!/bin/bash
-# SafeEye auto-deploy: pull latest from GitHub, rebuild, sync demo site
+# SafeEyes auto-deploy: pull latest from GitHub, rebuild, sync demo site
 # Can be triggered by webhook or cron
 
 set -e
@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 LOG="/tmp/safeeye_deploy.log"
 
-echo "$(date) — SafeEye auto-deploy started" | tee -a "$LOG"
+echo "$(date) — SafeEyes auto-deploy started" | tee -a "$LOG"
 
 # 1. Pull latest
 echo -e "${YELLOW}Pulling from GitHub...${NC}" | tee -a "$LOG"
@@ -20,7 +20,7 @@ docker compose build safeeye 2>&1 | tail -3 | tee -a "$LOG"
 docker compose up -d safeeye 2>&1 | tee -a "$LOG"
 
 # 3. Sync demo site
-DEMO_DIR="/var/www/lhflow_site/SafeEye"
+DEMO_DIR="/var/www/lhflow_site/SafeEyes"
 if [ -d "$DEMO_DIR" ]; then
     echo -e "${YELLOW}Syncing demo site...${NC}" | tee -a "$LOG"
     # Copy static dashboard as fallback

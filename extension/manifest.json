@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SafeEye Scanner",
+  "name": "SafeEyes Scanner",
   "version": "1.0.0",
-  "description": "Right-click any image to scan it for NSFW content using your SafeEye server.",
+  "description": "Right-click any image to scan it for NSFW content using your SafeEyes server.",
   "permissions": [
     "contextMenus",
     "storage",
@@ -17,7 +17,7 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon.png",
-    "default_title": "SafeEye Scanner"
+    "default_title": "SafeEyes Scanner"
   },
   "options_ui": {
     "page": "options.html",

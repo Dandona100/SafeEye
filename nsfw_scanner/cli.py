@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SafeEye CLI — full command-line interface for the SafeEye Content Safety Scanner.
+SafeEyes CLI — full command-line interface for the SafeEyes Content Safety Scanner.
 
 Usage:
     python -m nsfw_scanner.cli [command] [options]
@@ -758,7 +758,7 @@ def cmd_config(args):
         return
 
     print()
-    print(f"  {bold('SafeEye CLI Configuration')}")
+    print(f"  {bold('SafeEyes CLI Configuration')}")
     print()
     print(f"  Config file: {dim(str(_CONFIG_FILE))}")
     print(f"  URL:         {cyan(cfg.get('url') or red('(not set)'))}")
@@ -789,7 +789,7 @@ def cmd_config(args):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="safeeye",
-        description="SafeEye CLI — Content Safety Scanner",
+        description="SafeEyes CLI — Content Safety Scanner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
@@ -881,7 +881,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("deploy", help="Trigger remote auto-deploy")
 
     # ── update-check ──
-    sub.add_parser("update-check", help="Check for SafeEye updates")
+    sub.add_parser("update-check", help="Check for SafeEyes updates")
 
     # ── set ──
     p_set = sub.add_parser("set", help="Set up domain, DNS, nginx, etc.",

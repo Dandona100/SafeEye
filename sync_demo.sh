@@ -1,8 +1,8 @@
 #!/bin/bash
-# Sync SafeEye demo site after deploy
+# Sync SafeEyes demo site after deploy
 # Copies dashboard dark mode, latest features, and version to the demo site
 
-DEMO_DIR="/var/www/lhflow_site/SafeEye"
+DEMO_DIR="/var/www/lhflow_site/SafeEyes"
 SCANNER_DIR="$(dirname "$0")"
 
 if [ ! -d "$DEMO_DIR" ]; then
@@ -10,7 +10,7 @@ if [ ! -d "$DEMO_DIR" ]; then
     exit 0  # Not an error — demo site is optional
 fi
 
-echo "Syncing SafeEye demo site..."
+echo "Syncing SafeEyes demo site..."
 
 # Sync docs page if exists
 if [ -f "$SCANNER_DIR/../docs/CONTENT_FILTER_GUIDE.md" ]; then

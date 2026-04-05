@@ -1,4 +1,4 @@
-"""Gossip P2P protocol for sharing hash metadata between SafeEye servers.
+"""Gossip P2P protocol for sharing hash metadata between SafeEyes servers.
 
 Each server connects to 3-5 peers via WebSocket. New hashes propagate with TTL
 to prevent loops. Server identity is anonymous (random ID, rotated on restart).

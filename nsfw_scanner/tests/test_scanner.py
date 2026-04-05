@@ -1,4 +1,4 @@
-"""Comprehensive test suite for SafeEye scanner."""
+"""Comprehensive test suite for SafeEyes scanner."""
 import pytest
 import os
 import json
@@ -801,7 +801,7 @@ class TestNewProvidersV6:
 # ========== Integration Tests (require running server) ==========
 
 class TestIntegration:
-    """These tests require the SafeEye server to be running."""
+    """These tests require the SafeEyes server to be running."""
 
     @pytest.fixture(autouse=True)
     def skip_if_no_server(self):
@@ -809,7 +809,7 @@ class TestIntegration:
         try:
             urllib.request.urlopen("http://localhost:1985/health", timeout=2)
         except Exception:
-            pytest.skip("SafeEye server not running")
+            pytest.skip("SafeEyes server not running")
 
     def test_health_endpoint(self):
         import urllib.request, json
@@ -835,4 +835,4 @@ class TestIntegration:
         import urllib.request
         resp = urllib.request.urlopen("http://localhost:1985/dashboard")
         html = resp.read().decode()
-        assert "SafeEye" in html
+        assert "SafeEyes" in html

@@ -1,5 +1,5 @@
 #!/bin/bash
-# SafeEye domain setup — configures nginx reverse proxy + SSL
+# SafeEyes domain setup — configures nginx reverse proxy + SSL
 # Usage: sudo ./setup_domain.sh <domain> [port]
 # Example: sudo ./setup_domain.sh scanner.example.com 1985
 
@@ -12,7 +12,7 @@ NGINX_LINK="/etc/nginx/sites-enabled/safeeye-${DOMAIN}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-echo -e "${YELLOW}=== SafeEye Domain Setup ===${NC}"
+echo -e "${YELLOW}=== SafeEyes Domain Setup ===${NC}"
 echo "Domain: $DOMAIN"
 echo "Port:   $PORT"
 

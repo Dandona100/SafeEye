@@ -430,7 +430,7 @@ async def export_hash_metadata() -> list[dict]:
 
 
 async def import_hash_metadata(records: list[dict], source: str):
-    """Import hash metadata from another SafeEye server.
+    """Import hash metadata from another SafeEyes server.
     Merges into scan_history with source='shared:<origin>'."""
     db = await get_db()
     try:
