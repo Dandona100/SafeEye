@@ -732,7 +732,34 @@ function TokensTab({ api, i18n }) {
 
 /* ========== INTEGRATIONS ========== */
 const PROVIDER_DEFS = [
-    { key: 'nudenet', icon: '🧠', local: true },
+    // === Local providers (pip install) ===
+    { key: 'nudenet', icon: '🧠', local: true,
+      desc_he: 'זיהוי עירום — 12MB, פועל מהקופסה.', desc_en: 'Nudity detection — 12MB, works out of the box.' },
+    { key: 'marqo_nsfw', icon: '⚡', local: true, install: 'pip install timm torch',
+      desc_he: 'הכי מהיר (98.56%) — 22MB.', desc_en: 'Fastest (98.56%) — 22MB.' },
+    { key: 'falconsai_nsfw', icon: '🦅', local: true, install: 'pip install transformers torch',
+      desc_he: 'ViT 98% דיוק — 330MB.', desc_en: 'ViT 98% accuracy — 330MB.' },
+    { key: 'freepik_nsfw', icon: '🎨', local: true, install: 'pip install transformers torch',
+      desc_he: '4 רמות: neutral/low/medium/high.', desc_en: '4-level: neutral/low/medium/high.' },
+    { key: 'siglip_nsfw', icon: '📐', local: true, install: 'pip install transformers torch',
+      desc_he: '5 קטגוריות כולל hentai/anime — 400MB.', desc_en: '5-class incl. hentai/anime — 400MB.' },
+    { key: 'bumble_nsfw', icon: '🐝', local: true, install: 'pip install tensorflow',
+      desc_he: 'Bumble Private Detector — 21MB.', desc_en: 'Bumble Private Detector — 21MB.' },
+    { key: 'nsfwjs', icon: '🖼️', local: true, install: 'pip install onnxruntime',
+      desc_he: '5 קטגוריות: porn/sexy/hentai/drawing — 10MB.', desc_en: '5-class: porn/sexy/hentai/drawing — 10MB.' },
+    { key: 'deepfake_check', icon: '🎭', local: true,
+      desc_he: 'בדיקת עקביות פנים — OpenCV.', desc_en: 'Face consistency check — OpenCV.' },
+    { key: 'deepfake_v2', icon: '🎭', local: true, install: 'pip install transformers torch',
+      desc_he: 'זיהוי Deepfake אמיתי (92%) — ViT.', desc_en: 'Real deepfake detection (92%) — ViT.' },
+    { key: 'yolo_weapons', icon: '🔫', local: true, install: 'pip install ultralytics',
+      desc_he: 'זיהוי אקדחים, סכינים — YOLOv8.', desc_en: 'Guns, knives detection — YOLOv8.' },
+    { key: 'detoxify', icon: '🔤', local: true, install: 'pip install detoxify',
+      desc_he: 'רעילות טקסט — 6 קטגוריות.', desc_en: 'Text toxicity — 6 categories.' },
+    { key: 'hatespeech', icon: '💬', local: true, install: 'pip install transformers torch',
+      desc_he: 'זיהוי שפת שנאה בטקסט.', desc_en: 'Hate speech text detection.' },
+    { key: 'audio_check', icon: '🔊', local: true,
+      desc_he: 'מטאדאטה של אודיו — ffprobe.', desc_en: 'Audio metadata check — ffprobe.' },
+    // === API providers ===
     { key: 'sightengine', icon: '👁️',
       desc_he: 'זיהוי עירום, אלימות, סמים, נשק. 2,000/חודש חינם.',
       desc_en: 'Nudity, violence, drugs, weapons. 2,000 free/month.',
@@ -744,12 +771,6 @@ const PROVIDER_DEFS = [
       desc_en: 'SafeSearch — adult, violence, racy. 1,000 free/month.',
       link: 'https://console.cloud.google.com/apis/library/vision.googleapis.com',
       fields: [{ k: 'google_vision_credentials', ph: 'Credentials path (/app/data/sa.json)' }],
-    },
-    { key: 'moderatecontent', icon: '🏢',
-      desc_he: 'ModerateContent — Enterprise. צור קשר לקבלת API Key ($100+/חודש).',
-      desc_en: 'ModerateContent — Enterprise. Contact for API Key ($100+/month).',
-      link: 'https://www.moderatecontent.com/#contact',
-      fields: [{ k: 'moderatecontent_key', ph: 'API Key' }],
     },
     { key: 'amazon_rekognition', icon: '🟠',
       desc_he: 'Amazon Rekognition — עירום, אלימות, נשק. $200 קרדיט חינם.',
@@ -768,6 +789,18 @@ const PROVIDER_DEFS = [
       desc_en: 'PicPurify — nudity, gore, drugs, weapons. 2,000 free scans.',
       link: 'https://www.picpurify.com/pricing.html',
       fields: [{ k: 'picpurify_key', ph: 'API Key' }],
+    },
+    { key: 'moderatecontent', icon: '🏢',
+      desc_he: 'ModerateContent — adult, violence.',
+      desc_en: 'ModerateContent — adult, violence.',
+      link: 'https://www.moderatecontent.com/',
+      fields: [{ k: 'moderatecontent_key', ph: 'API Key' }],
+    },
+    { key: 'clip_search', icon: '🔎',
+      desc_he: 'CLIP — סיווג zero-shot. 1,000/יום חינם.',
+      desc_en: 'CLIP — zero-shot classification. 1,000 free/day.',
+      link: 'https://huggingface.co/settings/tokens',
+      fields: [{ k: 'hf_api_token', ph: 'Hugging Face Token' }],
     },
 ];
 
@@ -833,7 +866,11 @@ function IntegrationsTab({ api, i18n }) {
                                 </span>
                             </div>
                             {def.local ? (
-                                <p className="text-muted text-sm">{he ? 'מודל מקומי, תמיד פעיל. לא צריך טוקן.' : 'Local model, always active. No API key needed.'}</p>
+                                <div>
+                                    <p className="text-muted text-sm">{he ? (def.desc_he || 'מודל מקומי') : (def.desc_en || 'Local model')}</p>
+                                    {def.install && <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mt-2" dir="ltr">{def.install}</div>}
+                                    {!def.install && <p className="text-green-600 text-xs mt-1">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
+                                </div>
                             ) : isConnected ? (
                                 <div>
                                     <p className="text-green-600 text-sm mb-3">{he ? 'מחובר ופעיל' : 'Connected and active'}</p>
