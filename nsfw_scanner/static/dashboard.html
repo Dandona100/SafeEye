@@ -833,17 +833,23 @@ function ReportTab({ api, i18n }) {
 
     const REPO_URL = 'https://github.com/Dandona100/SafeEye';
 
+    const REPORT_API = 'https://lhflow.com:1985';
     const send = async () => {
         if (!title) return;
-        const endpoint = mode === 'bug' ? '/api/v1/report/bug' : '/api/v1/report/feature';
-        const res = await api.postApi(endpoint, { title, description: desc });
-        if (res.status === 'created') {
-            setStatus(`✅ ${i18n.t('sent_ok')} ${res.url || ''}`);
-            setTitle(''); setDesc('');
-        } else if (res.status === 'no_repo' || res.status === 'no_token') {
-            setStatus(`⚠️ ${res.message}`);
-        } else {
-            setStatus(`❌ ${i18n.t('send_fail')}: ${res.message || ''}`);
+        try {
+            const res = await fetch(`${REPORT_API}/api/v1/community`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description: desc, type: mode, source: window.location.hostname }),
+            }).then(r => r.json());
+            if (res.id) {
+                setStatus(`✅ ${i18n.t('sent_ok')}`);
+                setTitle(''); setDesc('');
+            } else {
+                setStatus(`❌ ${i18n.t('send_fail')}: ${res.detail || ''}`);
+            }
+        } catch (e) {
+            setStatus(`❌ ${i18n.t('send_fail')}: ${e.message}`);
         }
         setTimeout(() => setStatus(''), 8000);
     };
@@ -1560,8 +1566,8 @@ function TelegramVerify({ api, i18n }) {
                 {tgStatus?.verified && <span className="px-2 py-0.5 rounded text-xs text-white badge-safe">{he ? 'מאומת' : 'Verified'}</span>}
             </div>
             <p className="text-muted/70 text-xs mb-3">{he
-                ? 'חברו בוט טלגרם לקבלת התראות ואימות בעלות על הדומיין.'
-                : 'Connect a Telegram bot for alerts and domain ownership verification.'}</p>
+                ? 'חברו בוט טלגרם לקבלת התראות — כל התחברות לדשבורד תשלח הודעה.'
+                : 'Connect a Telegram bot for alerts — every dashboard login triggers a notification.'}</p>
 
             {tgStatus?.verified ? (
                 <div className="text-sm text-muted">
