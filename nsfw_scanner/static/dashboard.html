@@ -1606,6 +1606,103 @@ function TelegramVerify({ api, i18n }) {
     );
 }
 
+function PathSetup({ api, i18n, baseDomain, pathPrefix, port, onDone }) {
+    const he = i18n.lang === 'he';
+    const [phase, setPhase] = useState('idle'); // idle, detecting, found, custom, applying, done
+    const [detectedFile, setDetectedFile] = useState('');
+    const [customFile, setCustomFile] = useState('');
+    const [msg, setMsg] = useState('');
+
+    const detect = async () => {
+        setPhase('detecting');
+        setMsg(he ? '⏳ מחפש קובץ nginx...' : '⏳ Searching nginx config...');
+        const res = await api.postApi('/api/v1/admin/domain/detect-nginx', { domain: baseDomain });
+        if (res.status === 'found') {
+            setDetectedFile(res.config_file);
+            setPhase('found');
+            setMsg('');
+        } else {
+            setPhase('custom');
+            setMsg(he ? '⚠️ קובץ לא נמצא. הזינו את הנתיב ידנית:' : '⚠️ Config not found. Enter path manually:');
+        }
+    };
+
+    const apply = async (configFile) => {
+        setPhase('applying');
+        setMsg(he ? '⏳ מוסיף הגדרה...' : '⏳ Applying config...');
+        const res = await api.postApi('/api/v1/admin/domain/setup-path', { domain: baseDomain, path: pathPrefix, config_file: configFile });
+        if (res.status === 'ok') {
+            setPhase('done');
+            setMsg(`✅ ${he ? 'הוגדר בהצלחה!' : 'Configured!'} ${res.url}`);
+            onDone(`${baseDomain}/${pathPrefix}`);
+        } else if (res.status === 'exists') {
+            setPhase('done');
+            setMsg(`✅ ${he ? 'כבר מוגדר!' : 'Already configured!'}`);
+            onDone(`${baseDomain}/${pathPrefix}`);
+        } else if (res.status === 'permission_denied' || res.status === 'manual_required') {
+            setMsg(`⚠️ ${he ? 'צריך הרשאות. הריצו:' : 'Needs sudo. Run:'}\n${res.command || ''}`);
+            setPhase('idle');
+        } else {
+            setMsg(`❌ ${res.message || 'Failed'}`);
+            setPhase('idle');
+        }
+    };
+
+    useEffect(() => { if (baseDomain && pathPrefix) detect(); }, [baseDomain, pathPrefix]);
+
+    return (
+        <div className="fade-in space-y-3">
+            {phase === 'detecting' && <div className="text-sm text-muted">{msg}</div>}
+
+            {phase === 'found' && (
+                <div className="bg-warm rounded-lg p-4">
+                    <p className="text-sm font-medium mb-2">{he ? '📁 נמצא קובץ תצורה:' : '📁 Found config file:'}</p>
+                    <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mb-3" dir="ltr">{detectedFile}</div>
+                    <p className="text-muted text-xs mb-3">{he ? 'זה הקובץ הנכון?' : 'Is this the correct file?'}</p>
+                    <div className="flex gap-2">
+                        <button className="btn btn-green flex-1" onClick={() => apply(detectedFile)}>
+                            ✅ {he ? 'כן, הוסף הגדרה' : 'Yes, apply'}
+                        </button>
+                        <button className="btn btn-gray flex-1" onClick={() => { setPhase('custom'); setMsg(''); }}>
+                            ❌ {he ? 'לא, אבחר קובץ אחר' : 'No, choose different'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {phase === 'custom' && (
+                <div className="bg-warm rounded-lg p-4">
+                    {msg && <p className="text-sm text-amber-600 mb-2">{msg}</p>}
+                    <p className="text-sm mb-2">{he ? 'הזינו את הנתיב לקובץ nginx:' : 'Enter the nginx config file path:'}</p>
+                    <input className="input mb-2" dir="ltr" placeholder="/etc/nginx/sites-enabled/example.com"
+                        value={customFile} onChange={e => setCustomFile(e.target.value)} />
+                    <button className="btn btn-green w-full" disabled={!customFile.trim()} onClick={() => apply(customFile.trim())}>
+                        ⚡ {he ? 'הוסף הגדרה לקובץ' : 'Apply to this file'}
+                    </button>
+                </div>
+            )}
+
+            {phase === 'applying' && <div className="text-sm text-muted">{msg}</div>}
+            {phase === 'done' && <div className="text-sm text-green-600">{msg}</div>}
+            {phase === 'idle' && msg && <div className="card p-3 text-sm whitespace-pre-line">{msg}</div>}
+
+            <details className="text-xs text-muted">
+                <summary className="cursor-pointer">{he ? 'הצג הגדרה ידנית' : 'Show manual config'}</summary>
+                <div className="bg-ink rounded p-3 font-mono text-xs text-gray-300 mt-2 overflow-x-auto" dir="ltr">
+                    <pre>{`location /${pathPrefix} {
+    proxy_pass http://127.0.0.1:${port}/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 50M;
+}`}</pre>
+                </div>
+            </details>
+        </div>
+    );
+}
+
 function DomainTab({ api, i18n }) {
     const [config, setConfig] = useState(null);
     const [mode, setMode] = useState('domain');
@@ -1746,40 +1843,8 @@ function DomainTab({ api, i18n }) {
                                     value={pathPrefix} onChange={e => setPathPrefix(e.target.value.replace(/^\//, ''))} dir="ltr" />
                             </div>
                             {baseDomain && pathPrefix && (
-                                <div className="fade-in">
-                                    <button className="btn btn-green w-full mb-3" onClick={async () => {
-                                        setStatus(he ? '⏳ מחפש קובץ nginx ומגדיר...' : '⏳ Finding nginx config and setting up...');
-                                        const res = await api.postApi('/api/v1/admin/domain/setup-path', { domain: baseDomain, path: pathPrefix });
-                                        if (res.status === 'ok') {
-                                            setStatus(`✅ ${he ? 'הוגדר!' : 'Configured!'} ${res.url}\n${he ? 'קובץ:' : 'File:'} ${res.config_file}`);
-                                            setStep(3); setDomain(`${baseDomain}/${pathPrefix}`);
-                                            api.fetchApi('/api/v1/admin/domain').then(setConfig);
-                                        } else if (res.status === 'exists') {
-                                            setStatus(`✅ ${he ? 'כבר קיים!' : 'Already exists!'} ${res.config_file}`);
-                                        } else if (res.status === 'permission_denied' || res.status === 'manual_required') {
-                                            setStatus(`⚠️ ${he ? 'צריך הרשאות. הריצו:' : 'Needs permissions. Run:'}\n${res.command || ''}`);
-                                        } else if (res.status === 'not_found') {
-                                            setStatus(`⚠️ ${he ? 'קובץ nginx לא נמצא. הוסיפו ידנית:' : 'Nginx config not found. Add manually:'}\n${res.snippet || ''}`);
-                                        } else {
-                                            setStatus(`❌ ${res.message || 'Setup failed'}`);
-                                        }
-                                    }}>
-                                        ⚡ {he ? 'הגדר אוטומטית (מוצא nginx ומוסיף)' : 'Auto Setup (find nginx & add)'}
-                                    </button>
-                                    <details className="text-xs text-muted">
-                                        <summary className="cursor-pointer">{he ? 'הצג הגדרה ידנית' : 'Show manual config'}</summary>
-                                        <div className="bg-ink rounded p-3 font-mono text-xs text-gray-300 mt-2 overflow-x-auto" dir="ltr">
-                                            <pre>{`location /${pathPrefix} {
-    proxy_pass http://127.0.0.1:${config.port}/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    client_max_body_size 50M;
-}`}</pre>
-                                        </div>
-                                    </details>
-                                </div>
+                                <PathSetup api={api} i18n={i18n} baseDomain={baseDomain} pathPrefix={pathPrefix} port={config.port}
+                                    onDone={(full) => { setStep(3); setDomain(full); api.fetchApi('/api/v1/admin/domain').then(setConfig); }} />
                             )}
                         </div>
                     ) : (

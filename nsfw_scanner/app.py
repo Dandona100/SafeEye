@@ -1553,20 +1553,9 @@ async def setup_nginx(body: dict, authorization: str = Header(None)):
                 "command": f"sudo {script} {domain} {port}"}
 
 
-@app.post("/api/v1/admin/domain/setup-path")
-async def setup_path_auto(body: dict, authorization: str = Header(None)):
-    """Auto-add a location block to existing nginx config for path-based setup."""
-    await require_master(authorization)
-    domain = body.get("domain", "").strip()
-    path_prefix = body.get("path", "").strip().strip("/")
-    port = int(os.environ.get("SCAN_PORT", 1985))
-
-    if not domain or not path_prefix:
-        raise HTTPException(400, "Domain and path required")
-
-    # Find nginx config for this domain
+def _find_nginx_config(domain: str) -> dict:
+    """Search for nginx config file matching this domain. Returns {found, path, searched}."""
     import glob as _glob
-    nginx_conf = None
     search_paths = [
         f"/etc/nginx/sites-enabled/{domain}",
         f"/etc/nginx/sites-enabled/{domain}.conf",
@@ -1574,47 +1563,82 @@ async def setup_path_auto(body: dict, authorization: str = Header(None)):
         f"/etc/nginx/sites-available/{domain}.conf",
         f"/etc/nginx/conf.d/{domain}.conf",
     ]
-    # Also search wildcard
+
+    # Search by server_name in all config files
     for pattern in ["/etc/nginx/sites-enabled/*", "/etc/nginx/conf.d/*.conf"]:
         for f in _glob.glob(pattern):
             try:
                 content = open(f).read()
-                if f"server_name {domain}" in content or f"server_name *.{domain.split('.',1)[-1]}" in content:
-                    nginx_conf = f
-                    break
+                if f"server_name {domain}" in content or f"server_name *.{domain.split('.', 1)[-1]}" in content:
+                    return {"found": True, "path": f, "searched": search_paths}
             except (OSError, PermissionError):
                 pass
-        if nginx_conf:
-            break
 
-    if not nginx_conf:
-        for p in search_paths:
-            if os.path.exists(p):
-                nginx_conf = p
-                break
+    # Direct path check
+    for p in search_paths:
+        if os.path.exists(p):
+            return {"found": True, "path": p, "searched": search_paths}
 
-    if not nginx_conf:
-        return {
-            "status": "not_found",
-            "message": f"Nginx config for {domain} not found",
-            "searched": search_paths[:3],
-            "snippet": _nginx_location_block(path_prefix, port),
-        }
+    return {"found": False, "path": None, "searched": search_paths}
 
-    # Read current config and check if location already exists
+
+@app.post("/api/v1/admin/domain/detect-nginx")
+async def detect_nginx_config(body: dict, authorization: str = Header(None)):
+    """Step 1: Find nginx config file for a domain. User confirms or provides custom path."""
+    await require_master(authorization)
+    domain = body.get("domain", "").strip()
+    if not domain:
+        raise HTTPException(400, "Domain required")
+
+    result = _find_nginx_config(domain)
+    if result["found"]:
+        return {"status": "found", "config_file": result["path"], "searched": result["searched"]}
+    else:
+        return {"status": "not_found", "searched": result["searched"], "message": f"No nginx config found for {domain}"}
+
+
+@app.post("/api/v1/admin/domain/setup-path")
+async def setup_path_auto(body: dict, authorization: str = Header(None)):
+    """Step 2: Add location block to a confirmed nginx config file."""
+    await require_master(authorization)
+    domain = body.get("domain", "").strip()
+    path_prefix = body.get("path", "").strip().strip("/")
+    config_file = body.get("config_file", "").strip()  # User-confirmed or custom path
+    port = int(os.environ.get("SCAN_PORT", 1985))
+
+    if not domain or not path_prefix:
+        raise HTTPException(400, "Domain and path required")
+
+    # If no config_file provided, auto-detect
+    if not config_file:
+        result = _find_nginx_config(domain)
+        if not result["found"]:
+            return {
+                "status": "not_found",
+                "message": f"Nginx config for {domain} not found",
+                "searched": result["searched"],
+                "snippet": _nginx_location_block(path_prefix, port),
+            }
+        config_file = result["path"]
+
+    # Validate the file exists
+    if not os.path.exists(config_file):
+        return {"status": "not_found", "message": f"File not found: {config_file}"}
+
+    # Read current config
     try:
-        with open(nginx_conf) as f:
+        with open(config_file) as f:
             content = f.read()
     except PermissionError:
         return {
             "status": "permission_denied",
-            "config_file": nginx_conf,
+            "config_file": config_file,
             "snippet": _nginx_location_block(path_prefix, port),
-            "command": f"echo '{_nginx_location_block(path_prefix, port)}' | sudo tee -a {nginx_conf} && sudo nginx -t && sudo nginx -s reload",
+            "command": f"sudo nano {config_file}",
         }
 
     if f"location /{path_prefix}" in content:
-        return {"status": "exists", "message": f"Location /{path_prefix} already exists in {nginx_conf}", "config_file": nginx_conf}
+        return {"status": "exists", "message": f"Location /{path_prefix} already exists in {config_file}", "config_file": config_file}
 
     # Insert before the last closing brace (end of server block)
     snippet = _nginx_location_block(path_prefix, port)
@@ -1622,35 +1646,35 @@ async def setup_path_auto(body: dict, authorization: str = Header(None)):
     if len(lines) == 2:
         new_content = lines[0] + "\n" + snippet + "\n}\n"
     else:
-        return {"status": "parse_error", "message": "Could not find server block closing brace", "config_file": nginx_conf, "snippet": snippet}
+        return {"status": "parse_error", "message": "Could not find server block closing brace", "config_file": config_file, "snippet": snippet}
 
     # Write back (needs sudo)
     import subprocess
     try:
         proc = subprocess.run(
-            ["sudo", "-n", "tee", nginx_conf],
+            ["sudo", "-n", "tee", config_file],
             input=new_content.encode(), capture_output=True, timeout=10,
         )
         if proc.returncode != 0:
             return {
                 "status": "permission_denied",
-                "config_file": nginx_conf,
+                "config_file": config_file,
                 "snippet": snippet,
-                "command": f"sudo nano {nginx_conf}  # add the location block, then: sudo nginx -t && sudo nginx -s reload",
+                "command": f"sudo nano {config_file}",
             }
 
         # Test and reload
         test = subprocess.run(["sudo", "-n", "nginx", "-t"], capture_output=True, text=True, timeout=10)
         if test.returncode != 0:
-            return {"status": "config_error", "message": test.stderr, "config_file": nginx_conf}
+            return {"status": "config_error", "message": test.stderr, "config_file": config_file}
 
         subprocess.run(["sudo", "-n", "nginx", "-s", "reload"], capture_output=True, timeout=10)
 
         await database.save_provider_config("SAFEEYE_DOMAIN", f"{domain}/{path_prefix}")
-        return {"status": "ok", "config_file": nginx_conf, "path": f"/{path_prefix}", "url": f"https://{domain}/{path_prefix}/dashboard"}
+        return {"status": "ok", "config_file": config_file, "path": f"/{path_prefix}", "url": f"https://{domain}/{path_prefix}/dashboard"}
 
     except Exception as e:
-        return {"status": "manual_required", "message": str(e), "config_file": nginx_conf, "snippet": snippet}
+        return {"status": "manual_required", "message": str(e), "config_file": config_file, "snippet": snippet}
 
 
 def _nginx_location_block(path: str, port: int) -> str:
