@@ -511,7 +511,13 @@ function ProvidersTab({ api, i18n }) {
         });
     }, [data]);
 
-    if (!data.length) return <SkeletonLoader type="cards" count={4} />;
+    if (!data.length) return (
+        <div className="card p-8 text-center">
+            <div className="text-4xl mb-3">📡</div>
+            <h3 className="font-bold text-ink mb-2">{he ? 'אין נתונים עדיין' : 'No data yet'}</h3>
+            <p className="text-muted text-sm">{he ? 'סרקו תמונה או סרטון כדי לראות סטטיסטיקות ספקים.' : 'Scan an image or video to see provider statistics.'}</p>
+        </div>
+    );
 
     return (
         <div className="space-y-6 stagger">
