@@ -9,6 +9,8 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - /etc/nginx:/etc/nginx
+      - /usr/sbin/nginx:/usr/sbin/nginx:ro
     deploy:
       resources:
         limits:

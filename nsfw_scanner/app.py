@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+VERSION = "6.0.0"
+
 from nsfw_scanner import db as database
 from nsfw_scanner import auth, stats
 from nsfw_scanner.scanner import scan_file, get_active_providers, compute_phash
@@ -1556,30 +1558,49 @@ async def setup_nginx(body: dict, authorization: str = Header(None)):
 def _find_nginx_config(domain: str) -> dict:
     """Search for nginx config file matching this domain. Returns {found, path, searched}."""
     import glob as _glob
-    search_paths = [
+    searched = []
+
+    # 1. Direct name match (with and without .conf)
+    direct_paths = [
         f"/etc/nginx/sites-enabled/{domain}",
         f"/etc/nginx/sites-enabled/{domain}.conf",
         f"/etc/nginx/sites-available/{domain}",
         f"/etc/nginx/sites-available/{domain}.conf",
         f"/etc/nginx/conf.d/{domain}.conf",
+        f"/etc/nginx/conf.d/{domain}",
     ]
+    for p in direct_paths:
+        searched.append(p)
+        if os.path.isfile(p):
+            return {"found": True, "path": p, "searched": searched}
 
-    # Search by server_name in all config files
-    for pattern in ["/etc/nginx/sites-enabled/*", "/etc/nginx/conf.d/*.conf"]:
-        for f in _glob.glob(pattern):
+    # 2. Scan ALL files in nginx dirs — match by server_name directive or filename containing domain
+    scan_dirs = ["/etc/nginx/sites-enabled", "/etc/nginx/sites-available", "/etc/nginx/conf.d"]
+    for d in scan_dirs:
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(os.listdir(d)):
+            full = os.path.join(d, f)
+            if not os.path.isfile(full):
+                continue
+            searched.append(full)
+
+            # Check if filename contains domain or domain part
+            if domain in f or domain.split(".")[0] in f:
+                return {"found": True, "path": full, "searched": searched}
+
+            # Check file content for server_name
             try:
-                content = open(f).read()
-                if f"server_name {domain}" in content or f"server_name *.{domain.split('.', 1)[-1]}" in content:
-                    return {"found": True, "path": f, "searched": search_paths}
+                content = open(full).read(4096)  # Read first 4KB
+                if f"server_name {domain}" in content or f"server_name .{domain}" in content:
+                    return {"found": True, "path": full, "searched": searched}
+                # Also check if domain appears anywhere (e.g. in comments, ssl cert paths)
+                if domain in content:
+                    return {"found": True, "path": full, "searched": searched}
             except (OSError, PermissionError):
                 pass
 
-    # Direct path check
-    for p in search_paths:
-        if os.path.exists(p):
-            return {"found": True, "path": p, "searched": search_paths}
-
-    return {"found": False, "path": None, "searched": search_paths}
+    return {"found": False, "path": None, "searched": searched}
 
 
 @app.post("/api/v1/admin/domain/detect-nginx")
