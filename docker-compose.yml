@@ -13,7 +13,7 @@ services:
       - /usr/sbin/nginx:/usr/sbin/nginx:ro
       - ./nsfw_scanner/static:/app/nsfw_scanner/static
       - ./nsfw_scanner:/app/nsfw_scanner
-      - ./.git:/app/.git:ro
+      - ./.git:/app/.git
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       resources:
