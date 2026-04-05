@@ -1917,7 +1917,7 @@ function App() {
                     <button className="text-muted hover:text-ink text-xs sm:text-sm" onClick={() => { api.clearToken(); setAuthed(false); }}>{i18n.t('logout')}</button>
                 </div>
             </div>
-            <div dir="ltr" style={{ display: 'flex', flexDirection: 'row', direction: 'ltr', unicodeBidi: 'embed', gap: '0px', borderBottom: '1px solid #E5E2DD', marginBottom: '16px', padding: '0 4px', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: i18n.isRtl ? 'row-reverse' : 'row', gap: '0px', borderBottom: '1px solid #E5E2DD', marginBottom: '16px', padding: '0 4px', overflowX: 'auto' }}>
                 {tabs.map(t => (
                     <button key={t.id} style={{ flex: 1, textAlign: 'center', paddingBottom: '8px', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer', border: 'none', background: 'none', borderBottom: tab === t.id ? '2px solid #C9A962' : '2px solid transparent', color: tab === t.id ? '#A68B4B' : '#7A7A7A' }}
                         onClick={() => setTab(t.id)}>
