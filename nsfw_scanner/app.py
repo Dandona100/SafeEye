@@ -1438,12 +1438,12 @@ async def install_provider(body: dict, authorization: str = Header(None)):
         "falconsai_nsfw": "transformers torch",
         "freepik_nsfw": "transformers torch",
         "siglip_nsfw": "transformers torch",
-        "bumble_nsfw": "tensorflow",
+        "bumble_private": "tensorflow",
         "nsfwjs": "onnxruntime",
         "deepfake_v2": "transformers torch",
         "yolo_weapons": "ultralytics",
         "detoxify": "detoxify",
-        "hatespeech": "transformers torch",
+        "hate_speech": "transformers torch",
     }
     packages = _INSTALL_MAP.get(name)
     if not packages:

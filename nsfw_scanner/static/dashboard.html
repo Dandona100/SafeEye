@@ -1338,7 +1338,7 @@ const PROVIDER_DEFS = [
       desc_he: '4 רמות: neutral/low/medium/high.', desc_en: '4-level: neutral/low/medium/high.' },
     { key: 'siglip_nsfw', icon: '📐', local: true, install: 'pip install transformers torch',
       desc_he: '5 קטגוריות כולל hentai/anime — 400MB.', desc_en: '5-class incl. hentai/anime — 400MB.' },
-    { key: 'bumble_nsfw', icon: '🐝', local: true, install: 'pip install tensorflow',
+    { key: 'bumble_private', icon: '🐝', local: true, install: 'pip install tensorflow',
       desc_he: 'Bumble Private Detector — 21MB.', desc_en: 'Bumble Private Detector — 21MB.' },
     { key: 'nsfwjs', icon: '🖼️', local: true, install: 'pip install onnxruntime',
       desc_he: '5 קטגוריות: porn/sexy/hentai/drawing — 10MB.', desc_en: '5-class: porn/sexy/hentai/drawing — 10MB.' },
@@ -1350,7 +1350,7 @@ const PROVIDER_DEFS = [
       desc_he: 'זיהוי אקדחים, סכינים — YOLOv8.', desc_en: 'Guns, knives detection — YOLOv8.' },
     { key: 'detoxify', icon: '🔤', local: true, install: 'pip install detoxify',
       desc_he: 'רעילות טקסט — 6 קטגוריות.', desc_en: 'Text toxicity — 6 categories.' },
-    { key: 'hatespeech', icon: '💬', local: true, install: 'pip install transformers torch',
+    { key: 'hate_speech', icon: '💬', local: true, install: 'pip install transformers torch',
       desc_he: 'זיהוי שפת שנאה בטקסט.', desc_en: 'Hate speech text detection.' },
     { key: 'audio_check', icon: '🔊', local: true,
       desc_he: 'מטאדאטה של אודיו — ffprobe.', desc_en: 'Audio metadata check — ffprobe.' },
@@ -2203,11 +2203,23 @@ GET  /health                    ${he ? 'בדיקת תקינות' : 'health check
                             </div>
                         </div>
                         <div ref={termRef} className="p-3 overflow-y-auto overflow-x-hidden font-mono text-xs flex-1 min-h-0" style={{ background: '#1A1A1A', wordBreak: 'break-all' }}>
-                            {termLog.length === 0 && <div className="text-line">Type "help" or click "Test" on a code example.{'\n'}Upload a file with 📎 to scan it.</div>}
+                            {termLog.length === 0 && <div className="text-line">
+                                <div className="mb-2">{he ? 'לחצו על פקודה להרצה:' : 'Click a command to run:'}</div>
+                                {['health', 'stats', 'providers', 'compare', 'help'].map(cmd => (
+                                    <button key={cmd} onClick={() => runInTerminal(cmd)} style={{ background:'none',border:'1px solid #444',borderRadius:6,padding:'4px 10px',margin:'2px 4px',cursor:'pointer',color:'#C9A962',fontSize:'11px',fontFamily:'monospace' }}>{cmd}</button>
+                                ))}
+                            </div>}
                             {termLog.map((l, i) => (
                                 <div key={i} className={`${termColors[l.type] || 'text-muted'} whitespace-pre-wrap mb-1 break-all ${l.type === 'json' ? 'max-h-40 overflow-y-auto overflow-x-auto text-[10px]' : ''}`}>{l.text}</div>
                             ))}
                             {loading && <div className="text-gold-dark animate-pulse">⏳ Running...</div>}
+                        </div>
+                        <div className="border-t border-line px-2 pt-1 flex gap-1 flex-wrap shrink-0" style={{ background: '#1A1A1A' }}>
+                            {['health','stats','providers','compare','clear'].map(cmd => (
+                                <button key={cmd} onClick={() => runInTerminal(cmd)} disabled={loading}
+                                    style={{ background:'none',border:'1px solid #333',borderRadius:4,padding:'2px 8px',cursor:'pointer',color:'#7A7A7A',fontSize:'10px',fontFamily:'monospace',transition:'color .15s' }}
+                                    onMouseOver={e=>e.target.style.color='#C9A962'} onMouseOut={e=>e.target.style.color='#7A7A7A'}>{cmd}</button>
+                            ))}
                         </div>
                         <div className="border-t border-line p-2 flex gap-2 shrink-0" style={{ background: '#1A1A1A' }}>
                             <label className="btn btn-gray text-xs cursor-pointer px-2">
