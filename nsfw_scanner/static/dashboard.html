@@ -2016,11 +2016,40 @@ function ApiDocsTab({ api, i18n, onNavigate }) {
                     '  providers           — list provider metrics',
                     '  token               — show sandbox token',
                     '  scan url <url>      — scan a URL',
+                    '  compare             — compare two images (delta detection)',
                     '  clear               — clear terminal',
                     '  help                — show this help',
                     '',
                     'Or upload a file with the 📎 button to scan it.',
                 ].join('\n'), 'output');
+            } else if (cmd === 'compare') {
+                log('Upload two images to compare. Use the form below or:', 'output');
+                log(`curl -X POST ${baseUrl}/api/v1/scan/compare \\\n  -H "Authorization: Bearer ${token}" \\\n  -F "file1=@image_a.jpg" \\\n  -F "file2=@image_b.jpg"`, 'output');
+                // Show inline file picker
+                const pickFiles = () => new Promise(resolve => {
+                    const inp = document.createElement('input');
+                    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+                    inp.onchange = () => resolve(inp.files);
+                    inp.click();
+                });
+                const files = await pickFiles();
+                if (files && files.length >= 2) {
+                    log(`Comparing "${files[0].name}" vs "${files[1].name}"...`, 'cmd');
+                    const fd = new FormData();
+                    fd.append('file1', files[0]); fd.append('file2', files[1]);
+                    const resp = await fetch(`${baseUrl}/api/v1/scan/compare`, {
+                        method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+                    });
+                    const data = await resp.json();
+                    const ic = data.image_comparison || {};
+                    log(`Hamming distance: ${data.hamming_distance}`, 'output');
+                    log(`Similarity: ${(data.similarity * 100).toFixed(1)}%`, data.similarity > 0.9 ? 'success' : 'warn');
+                    log(`Pixel diff: ${ic.pixel_diff_pct || 0}%`, ic.pixel_diff_pct > 10 ? 'error' : 'success');
+                    log(`Histogram correlation: ${ic.histogram_correlation || 0}`, 'output');
+                    if (data.changes) log(`Changes: ${data.changes.join(', ')}`, 'warn');
+                } else {
+                    log('Select at least 2 files to compare.', 'warn');
+                }
             } else if (cmd === 'clear') {
                 setTermLog([]);
             } else {
@@ -2126,7 +2155,8 @@ function ApiDocsTab({ api, i18n, onNavigate }) {
         { title: 'Java', run: 'java',
           code: `import java.net.http.*;\nimport java.nio.file.*;\n\nString SAFEEYE = "${baseUrl}";\nString TOKEN = "${tk}";\n\n// ${he ? 'סריקת קובץ' : 'Scan file'}\nvar boundary = "----SafeEyes";\nvar body = "--" + boundary + "\\r\\n"\n    + "Content-Disposition: form-data; name=\\"file\\"; "\n    + "filename=\\"image.jpg\\"\\r\\n"\n    + "Content-Type: image/jpeg\\r\\n\\r\\n";\n\nvar fileBytes = Files.readAllBytes(Path.of("image.jpg"));\nvar end = "\\r\\n--" + boundary + "--\\r\\n";\n\nvar request = HttpRequest.newBuilder()\n    .uri(URI.create(SAFEEYE + "/api/v1/scan/file"))\n    .header("Authorization", "Bearer " + TOKEN)\n    .header("Content-Type", "multipart/form-data; boundary=" + boundary)\n    .POST(HttpRequest.BodyPublishers.ofByteArrays(\n        List.of(body.getBytes(), fileBytes, end.getBytes())))\n    .build();\n\nvar response = HttpClient.newHttpClient()\n    .send(request, HttpResponse.BodyHandlers.ofString());\nSystem.out.println(response.body());` },
         { title: he ? '📋 Endpoints' : '📋 Endpoints', run: 'help',
-          code: `POST /api/v1/scan/file          ${he ? 'סריקת קובץ' : 'scan uploaded file'}\nPOST /api/v1/scan/url?url=...   ${he ? 'סריקת URL' : 'scan a URL'}\nGET  /api/v1/scan/{id}          ${he ? 'תוצאת סריקה' : 'get scan result'}\nPOST /api/v1/feedback/{id}      ${he ? 'משוב על דיוק' : 'accuracy feedback'}\nGET  /api/v1/stats              ${he ? 'סטטיסטיקות' : 'overview stats'}\nGET  /api/v1/stats/providers    ${he ? 'מדדי ספקים' : 'provider metrics'}\nGET  /api/v1/stats/history      ${he ? 'היסטוריה' : 'scan history'}\nPOST /api/v1/admin/tokens       ${he ? 'יצירת טוקן (master)' : 'create token (master)'}\nGET  /health                    ${he ? 'בדיקת תקינות' : 'health check'}` },
+          code: `POST /api/v1/scan/file          ${he ? 'סריקת קובץ' : 'scan uploaded file'}\nPOST /api/v1/scan/url?url=...   ${he ? 'סריקת URL' : 'scan a URL'}\nGET  /api/v1/scan/{id}          ${he ? 'תוצאת סריקה' : 'get scan result'}\nPOST /api/v1/feedback/{id}      ${he ? 'משוב על דיוק' : 'accuracy feedback'}\nGET  /api/v1/stats              ${he ? 'סטטיסטיקות' : 'overview stats'}\nGET  /api/v1/stats/providers    ${he ? 'מדדי ספקים' : 'provider metrics'}\nGET  /api/v1/stats/history      ${he ? 'היסטוריה' : 'scan history'}\nPOST /api/v1/admin/tokens       ${he ? 'יצירת טוקן (master)' : 'create token (master)'}\nPOST /api/v1/scan/compare       ${he ? 'השוואת שתי תמונות' : 'compare two images (delta)'}
+GET  /health                    ${he ? 'בדיקת תקינות' : 'health check'}` },
     ];
 
     return (
