@@ -175,6 +175,23 @@ async def get_provider_usage(provider_name: str) -> dict:
         await db.close()
 
 
+async def get_scan_timeline(days: int = 30) -> list[dict]:
+    """Hourly scan counts for timeline/heatmap visualization."""
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT strftime('%Y-%m-%d', timestamp) as day, "
+            "CAST(strftime('%H', timestamp) AS INTEGER) as hour, "
+            "COUNT(*) as count, SUM(is_nsfw) as nsfw "
+            "FROM scan_history WHERE timestamp >= DATE('now', ?) "
+            "GROUP BY day, hour ORDER BY day, hour",
+            (f"-{days} days",))
+        return [{"day": dict(r)["day"], "hour": dict(r)["hour"],
+                 "count": dict(r)["count"], "nsfw": dict(r)["nsfw"] or 0} for r in rows]
+    finally:
+        await db.close()
+
+
 async def get_history(limit: int = 50, offset: int = 0, nsfw_only: bool = False,
                       requesting_token: str = None) -> list[HistoryItem]:
     db = await get_db()

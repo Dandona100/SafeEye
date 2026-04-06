@@ -1168,6 +1168,13 @@ async def get_provider_stats(authorization: str = Header(None)):
     return await stats.get_provider_stats()
 
 
+@app.get("/api/v1/stats/timeline")
+async def get_scan_timeline(days: int = Query(30, le=90), authorization: str = Header(None)):
+    """Hourly scan counts for D3 visualizations."""
+    await require_token(authorization)
+    return await stats.get_scan_timeline(days)
+
+
 @app.get("/api/v1/stats/providers/{provider_name}/usage")
 async def get_provider_usage(provider_name: str, authorization: str = Header(None)):
     """Detailed usage stats for a single provider — calls, latency, daily breakdown, errors."""
