@@ -1210,10 +1210,64 @@ function HistoryTab({ api, i18n }) {
 }
 
 /* ========== TOKENS ========== */
+function TokenUsageModal({ api, i18n, tokenName, onClose }) {
+    const he = i18n.lang === 'he';
+    const [usage, setUsage] = useState(null);
+    useEffect(() => { api.fetchApi(`/api/v1/stats/tokens/${tokenName}/usage`).then(setUsage).catch(() => {}); }, [tokenName]);
+
+    if (!usage) return (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center' }} onClick={onClose}>
+            <div className="card p-6" onClick={e => e.stopPropagation()}><SkeletonLoader type="list" count={3} /></div>
+        </div>
+    );
+    return (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px' }} onClick={onClose}>
+            <div className="card p-6" style={{ maxWidth:'460px',width:'100%',maxHeight:'80vh',overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-ink" style={{ fontFamily:'Playfair Display, serif' }}>🔑 {usage.token_name}</h3>
+                    <button onClick={onClose} style={{ background:'none',border:'none',cursor:'pointer',fontSize:'1.2rem',color:'#7A7A7A' }}>✕</button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{usage.total_scans}</div>
+                        <div className="text-xs text-muted">{he ? 'סריקות' : 'Scans'}</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold" style={{ color:'#C0392B' }}>{usage.nsfw_detected}</div>
+                        <div className="text-xs text-muted">NSFW</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{usage.avg_latency_ms}ms</div>
+                        <div className="text-xs text-muted">{he ? 'ממוצע' : 'Avg'}</div>
+                    </div>
+                </div>
+                <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'סריקה ראשונה' : 'First scan'}</span><span className="text-ink">{usage.first_scan ? new Date(usage.first_scan).toLocaleDateString() : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'סריקה אחרונה' : 'Last scan'}</span><span className="text-ink">{usage.last_scan ? new Date(usage.last_scan).toLocaleDateString() : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'אחוז NSFW' : 'NSFW Rate'}</span><span className="text-ink">{usage.total_scans > 0 ? ((usage.nsfw_detected / usage.total_scans) * 100).toFixed(1) : 0}%</span></div>
+                </div>
+                {usage.daily_usage.length > 0 && (
+                    <div>
+                        <div className="text-xs text-muted mb-2">{he ? 'שימוש יומי (30 ימים)' : 'Daily Usage (30 days)'}</div>
+                        <div className="flex items-end gap-1" style={{ height:'48px' }}>
+                            {usage.daily_usage.map((d, i) => {
+                                const max = Math.max(...usage.daily_usage.map(x => x.count));
+                                const h = max > 0 ? (d.count / max) * 100 : 0;
+                                return <div key={i} title={`${d.day}: ${d.count} scans, ${d.nsfw} NSFW`} style={{ flex:1, height:`${Math.max(h, 4)}%`, background: d.nsfw > 0 ? '#C0392B' : '#C9A962', borderRadius:'2px', minWidth:'2px' }}></div>;
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function TokensTab({ api, i18n }) {
     const [tokens, setTokens] = useState([]);
     const [name, setName] = useState('');
     const [created, setCreated] = useState(null);
+    const [selectedToken, setSelectedToken] = useState(null);
 
     const load = () => { api.fetchApi('/api/v1/admin/tokens').then(setTokens).catch(() => {}); };
     useEffect(() => { load(); }, []);
@@ -1251,12 +1305,12 @@ function TokensTab({ api, i18n }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {tokens.map(t => (
-                    <div key={t.name} className="card p-6">
+                    <div key={t.name} className="card p-6" style={{ cursor: 'pointer' }} onClick={() => setSelectedToken(t.name)}>
                         <div className="flex items-center gap-3 mb-4">
                             <span className="text-2xl">🔑</span>
                             <div>
                                 <h4 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{t.name}</h4>
-                                <span className="text-muted text-xs">{t.scan_count} {i18n.t('scans')}</span>
+                                <span className="text-muted text-xs">{t.scan_count} {i18n.t('scans')} — {i18n.lang === 'he' ? 'לחצו לפרטים' : 'click for usage'}</span>
                             </div>
                         </div>
                         <div className="space-y-2 text-sm">
@@ -1269,6 +1323,7 @@ function TokensTab({ api, i18n }) {
                 ))}
             </div>
             {tokens.length === 0 && <div className="card p-10 text-center"><div className="text-4xl mb-3">🔑</div><p className="text-muted">{i18n.t('no_tokens')}</p></div>}
+            {selectedToken && <TokenUsageModal api={api} i18n={i18n} tokenName={selectedToken} onClose={() => setSelectedToken(null)} />}
         </div>
     );
 }
@@ -1527,172 +1582,34 @@ function IntegrationsTab({ api, i18n }) {
 /* ========== COMMUNITY ========== */
 function ReportTab({ api, i18n }) {
     const he = i18n.lang === 'he';
-    const REPORT_API = 'https://lhflow.com:1985';
-    const REPO_URL = 'https://github.com/Dandona100/SafeEyes';
-
-    const [filter, setFilter] = useState('all');
-    const [reports, setReports] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-
-    const [showForm, setShowForm] = useState(false);
-    const [mode, setMode] = useState('feature');
-    const [title, setTitle] = useState('');
-    const [desc, setDesc] = useState('');
-    const [formStatus, setFormStatus] = useState('');
-
-    const deviceId = useRef(localStorage.getItem('safeeye_device') || (() => { const id = crypto.randomUUID(); localStorage.setItem('safeeye_device', id); return id; })());
-
-    const load = async () => {
-        setLoading(true); setError('');
-        try {
-            const typeParam = filter !== 'all' ? `?type=${filter}` : '';
-            const res = await fetch(`${REPORT_API}/api/v1/community${typeParam}`);
-            if (!res.ok) throw new Error(res.statusText);
-            setReports(await res.json());
-        } catch (e) {
-            setError(he ? 'טעינה נכשלה' : 'Load failed');
-        }
-        setLoading(false);
-    };
-    useEffect(() => { load(); }, [filter]);
-
-    const vote = async (id) => {
-        try {
-            const res = await fetch(`${REPORT_API}/api/v1/community/${id}/vote`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_uuid: deviceId.current }),
-            });
-            const data = await res.json();
-            if (data.status === 'already_voted') return;
-            load();
-        } catch {}
-    };
-
-    const send = async () => {
-        if (!title) return;
-        try {
-            const res = await fetch(`${REPORT_API}/api/v1/community`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, description: desc, type: mode, device_uuid: deviceId.current, source: window.location.hostname }),
-            }).then(r => r.json());
-            if (res.id) {
-                setFormStatus(`✅ ${i18n.t('sent_ok')}`);
-                setTitle(''); setDesc(''); setShowForm(false); load();
-            } else {
-                setFormStatus(`❌ ${i18n.t('send_fail')}: ${res.detail || ''}`);
-            }
-        } catch (e) {
-            setFormStatus(`❌ ${i18n.t('send_fail')}: ${e.message}`);
-        }
-        setTimeout(() => setFormStatus(''), 8000);
-    };
-
-    const features = reports.filter(r => r.type === 'feature');
-    const bugs = reports.filter(r => r.type === 'bug');
-
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
-                <div className="text-3xl mb-2">🏘️</div>
-                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'הקהילה' : 'Community'}</h3>
-                <p className="text-muted text-sm mt-1">{he ? 'דווחו על באגים, הציעו פיצ\'רים, והצביעו — יחד נבנה את SafeEyes' : 'Report bugs, suggest features, and vote — let\'s build SafeEyes together'}</p>
-            </div>
-
-            {/* Add + Links row */}
-            <div className="flex flex-wrap gap-2 items-center">
-                <button className="btn" onClick={() => setShowForm(!showForm)}>
-                    {showForm ? (he ? 'ביטול' : 'Cancel') : (he ? '+ הוסיפו הצעה' : '+ Add suggestion')}
-                </button>
-                <a href={`${REPO_URL}/issues/new?labels=bug`} target="_blank" rel="noopener" className="btn" style={{ background: '#FAF9F7', color: '#7A7A7A', textDecoration: 'none' }}>
-                    🐛 GitHub
-                </a>
-                <a href="https://t.me/DVS20" target="_blank" rel="noopener" className="btn" style={{ background: '#FAF9F7', color: '#7A7A7A', textDecoration: 'none' }}>
-                    💬 Telegram
+            <div className="card p-8 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-5xl mb-4">🏘️</div>
+                <h3 className="text-2xl font-bold text-ink mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'הקהילה' : 'Community'}</h3>
+                <p className="text-muted text-sm mb-6">{he ? 'דווחו על באגים, הציעו פיצ\'רים, והצביעו — באתר הרשמי' : 'Report bugs, suggest features, and vote — on the official site'}</p>
+                <a href="https://lhflow.com/SafeEye/#community" target="_blank" rel="noopener"
+                    className="btn btn-gold text-base" style={{ textDecoration: 'none', padding: '14px 32px' }}>
+                    {he ? '🌐 פתח את עמוד הקהילה' : '🌐 Open Community Page'}
                 </a>
             </div>
-
-            {/* Submit form */}
-            {showForm && (
-                <div className="card p-5 space-y-3">
-                    <div className="flex gap-2">
-                        {[{ id: 'feature', icon: '💡', label: he ? 'הצעה' : 'Feature' }, { id: 'bug', icon: '🐛', label: he ? 'באג' : 'Bug' }].map(t => (
-                            <button key={t.id} onClick={() => setMode(t.id)} className="btn" style={{ background: mode === t.id ? '#C9A962' : '#FAF9F7', color: mode === t.id ? '#fff' : '#7A7A7A' }}>
-                                {t.icon} {t.label}
-                            </button>
-                        ))}
-                    </div>
-                    <input className="input w-full" placeholder={he ? 'כותרת' : 'Title'} value={title} onChange={e => setTitle(e.target.value)} />
-                    <textarea className="input w-full" rows={3} placeholder={he ? 'תיאור (אופציונלי)' : 'Description (optional)'} value={desc} onChange={e => setDesc(e.target.value)} />
-                    <button className="btn" onClick={send}>{i18n.t('send')}</button>
-                    {formStatus && <p className="text-sm mt-1">{formStatus}</p>}
-                </div>
-            )}
-
-            {/* Reports list */}
-            {loading ? <SkeletonLoader type="list" count={4} /> : error ? (
-                <div className="card p-6 text-center">
-                    <p className="text-muted">{error}</p>
-                    <button className="btn mt-3" onClick={load}>{he ? 'נסו שוב' : 'Retry'}</button>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {/* Features section */}
-                    {features.length > 0 && (
-                        <div>
-                            <h4 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>💡 {he ? 'הצעות' : 'Suggestions'}</h4>
-                            <div className="space-y-2">
-                                {features.map(r => (
-                                    <div key={r.id} className="card p-4 flex items-start gap-3">
-                                        <button onClick={() => vote(r.id)} className="flex flex-col items-center min-w-[40px] pt-0.5" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                            <span style={{ color: '#C9A962', fontSize: '1rem' }}>▲</span>
-                                            <span className="text-sm font-bold text-ink">{r.vote_count || 0}</span>
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-ink">{r.title}</p>
-                                            {r.description && <p className="text-xs text-muted mt-1">{r.description}</p>}
-                                            <p className="text-xs text-muted/60 mt-1">{new Date(r.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Bugs section */}
-                    {bugs.length > 0 && (
-                        <div>
-                            <h4 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>🐛 {he ? 'באגים' : 'Bugs'}</h4>
-                            <div className="space-y-2">
-                                {bugs.map(r => (
-                                    <div key={r.id} className="card p-4 flex items-start gap-3">
-                                        <button onClick={() => vote(r.id)} className="flex flex-col items-center min-w-[40px] pt-0.5" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                            <span style={{ color: '#C0392B', fontSize: '1rem' }}>▲</span>
-                                            <span className="text-sm font-bold text-ink">{r.vote_count || 0}</span>
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-ink">{r.title}</p>
-                                            {r.description && <p className="text-xs text-muted mt-1">{r.description}</p>}
-                                            <p className="text-xs text-muted/60 mt-1">{new Date(r.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Empty state */}
-                    {reports.length === 0 && (
-                        <div className="card p-8 text-center">
-                            <div className="text-3xl mb-2">📭</div>
-                            <p className="text-muted">{he ? 'אין דיווחים עדיין — היו הראשונים!' : 'No reports yet — be the first!'}</p>
-                        </div>
-                    )}
-                </div>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <a href="https://github.com/Dandona100/SafeEyes/issues/new?labels=bug" target="_blank" rel="noopener" className="card p-5 text-center clickable" style={{ textDecoration: 'none' }}>
+                    <div className="text-2xl mb-2">🐛</div>
+                    <div className="text-sm font-medium text-ink">{he ? 'דיווח באג' : 'Report Bug'}</div>
+                    <div className="text-xs text-muted mt-1">GitHub Issues</div>
+                </a>
+                <a href="https://github.com/Dandona100/SafeEyes/issues/new?labels=enhancement" target="_blank" rel="noopener" className="card p-5 text-center clickable" style={{ textDecoration: 'none' }}>
+                    <div className="text-2xl mb-2">💡</div>
+                    <div className="text-sm font-medium text-ink">{he ? 'בקשת פיצ\'ר' : 'Feature Request'}</div>
+                    <div className="text-xs text-muted mt-1">GitHub Issues</div>
+                </a>
+                <a href="https://t.me/DVS20" target="_blank" rel="noopener" className="card p-5 text-center clickable" style={{ textDecoration: 'none' }}>
+                    <div className="text-2xl mb-2">💬</div>
+                    <div className="text-sm font-medium text-ink">{he ? 'צור קשר' : 'Contact'}</div>
+                    <div className="text-xs text-muted mt-1">Telegram</div>
+                </a>
+            </div>
         </div>
     );
 }

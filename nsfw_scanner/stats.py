@@ -40,7 +40,10 @@ async def get_overview(requesting_token: str = None) -> StatsOverview:
             )
         scans_today = row[0][0] if row else 0
 
-        row = await db.execute_fetchall(f"SELECT AVG(total_duration_ms) FROM scan_history{token_filter}", token_params)
+        # Average latency — images only (videos skew the number)
+        img_filter = f"{'WHERE' if not requesting_token else 'WHERE requesting_token=? AND'} file_type='image'"
+        img_params = token_params
+        row = await db.execute_fetchall(f"SELECT AVG(total_duration_ms) FROM scan_history {img_filter}", img_params)
         avg_ms = row[0][0] if row and row[0][0] else 0
 
         # Load blocklist size
@@ -170,6 +173,35 @@ async def get_provider_usage(provider_name: str) -> dict:
             "daily_usage": [{"day": dict(d)["day"], "count": dict(d)["count"]} for d in daily],
             "hourly_distribution": [{"hour": dict(h)["hour"], "count": dict(h)["count"]} for h in hourly],
             "recent_errors": [{"labels": dict(e)["labels"], "timestamp": dict(e)["timestamp"]} for e in errors],
+        }
+    finally:
+        await db.close()
+
+
+async def get_token_usage(token_name: str) -> dict:
+    """Detailed usage stats for a single API token."""
+    db = await get_db()
+    try:
+        row = await db.execute_fetchall(
+            "SELECT COUNT(*) as total, SUM(is_nsfw) as nsfw, "
+            "AVG(total_duration_ms) as avg_lat, "
+            "MIN(timestamp) as first_scan, MAX(timestamp) as last_scan "
+            "FROM scan_history WHERE requesting_token=?", (token_name,))
+        r = dict(row[0]) if row else {}
+
+        daily = await db.execute_fetchall(
+            "SELECT DATE(timestamp) as day, COUNT(*) as count, SUM(is_nsfw) as nsfw "
+            "FROM scan_history WHERE requesting_token=? AND timestamp >= DATE('now', '-30 days') "
+            "GROUP BY day ORDER BY day", (token_name,))
+
+        return {
+            "token_name": token_name,
+            "total_scans": r.get("total", 0),
+            "nsfw_detected": r.get("nsfw", 0) or 0,
+            "avg_latency_ms": round(r.get("avg_lat", 0) or 0, 1),
+            "first_scan": r.get("first_scan"),
+            "last_scan": r.get("last_scan"),
+            "daily_usage": [{"day": dict(d)["day"], "count": dict(d)["count"], "nsfw": dict(d)["nsfw"] or 0} for d in daily],
         }
     finally:
         await db.close()
