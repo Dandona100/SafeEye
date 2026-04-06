@@ -740,10 +740,101 @@ function PreScanCard({ i18n }) {
 }
 
 /* ========== PROVIDERS ========== */
+function ProviderUsageModal({ api, i18n, provider, onClose }) {
+    const he = i18n.lang === 'he';
+    const [usage, setUsage] = useState(null);
+    useEffect(() => {
+        api.fetchApi(`/api/v1/stats/providers/${provider}/usage`).then(setUsage).catch(() => {});
+    }, [provider]);
+
+    if (!usage) return (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center' }} onClick={onClose}>
+            <div className="card p-6" onClick={e => e.stopPropagation()}><SkeletonLoader type="list" count={3} /></div>
+        </div>
+    );
+
+    return (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px' }} onClick={onClose}>
+            <div className="card p-6" style={{ maxWidth:'500px',width:'100%',maxHeight:'80vh',overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-ink" style={{ fontFamily:'Playfair Display, serif' }}>{usage.provider}</h3>
+                    <button onClick={onClose} style={{ background:'none',border:'none',cursor:'pointer',fontSize:'1.2rem',color:'#7A7A7A' }}>✕</button>
+                </div>
+
+                {/* Key metrics */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{usage.total_scans}</div>
+                        <div className="text-xs text-muted">{he ? 'סריקות' : 'Scans'}</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold" style={{ color:'#C0392B' }}>{usage.nsfw_flagged}</div>
+                        <div className="text-xs text-muted">{he ? 'סומנו' : 'Flagged'}</div>
+                    </div>
+                    <div className="bg-warm rounded-lg p-3 text-center">
+                        <div className="text-lg font-bold text-ink">{usage.avg_latency_ms}ms</div>
+                        <div className="text-xs text-muted">{he ? 'ממוצע' : 'Avg'}</div>
+                    </div>
+                </div>
+
+                {/* Latency range */}
+                <div className="mb-4">
+                    <div className="text-xs text-muted mb-1">{he ? 'טווח זמן תגובה' : 'Latency Range'}</div>
+                    <div className="flex justify-between text-xs">
+                        <span className="text-green-600">Min: {usage.min_latency_ms}ms</span>
+                        <span className="text-ink">Avg: {usage.avg_latency_ms}ms</span>
+                        <span className="text-red-600">Max: {usage.max_latency_ms}ms</span>
+                    </div>
+                    <div className="h-2 bg-warm rounded mt-1 overflow-hidden">
+                        <div style={{ width: `${Math.min(usage.avg_latency_ms / usage.max_latency_ms * 100, 100)}%`, height:'100%', background:'#C9A962', borderRadius:'4px' }}></div>
+                    </div>
+                </div>
+
+                {/* More stats */}
+                <div className="space-y-2 mb-4 text-sm">
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'שגיאות' : 'Errors'}</span><span className="text-ink">{usage.errors}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'דולגו' : 'Skipped'}</span><span className="text-ink">{usage.skipped}</span></div>
+                    {usage.accuracy !== null && <div className="flex justify-between"><span className="text-muted">{he ? 'דיוק' : 'Accuracy'}</span><span className="text-green-600 font-bold">{usage.accuracy}%</span></div>}
+                    <div className="flex justify-between"><span className="text-muted">{he ? 'אחוז סימון' : 'Flag Rate'}</span><span className="text-ink">{usage.total_scans > 0 ? ((usage.nsfw_flagged / usage.total_scans) * 100).toFixed(1) : 0}%</span></div>
+                </div>
+
+                {/* Daily usage mini chart */}
+                {usage.daily_usage.length > 0 && (
+                    <div className="mb-4">
+                        <div className="text-xs text-muted mb-2">{he ? 'שימוש יומי (30 ימים)' : 'Daily Usage (30 days)'}</div>
+                        <div className="flex items-end gap-1" style={{ height:'48px' }}>
+                            {usage.daily_usage.map((d, i) => {
+                                const max = Math.max(...usage.daily_usage.map(x => x.count));
+                                const h = max > 0 ? (d.count / max) * 100 : 0;
+                                return <div key={i} title={`${d.day}: ${d.count}`} style={{ flex:1, height:`${Math.max(h, 4)}%`, background:'#C9A962', borderRadius:'2px', minWidth:'2px' }}></div>;
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Recent errors */}
+                {usage.recent_errors.length > 0 && (
+                    <div>
+                        <div className="text-xs text-muted mb-2">{he ? 'שגיאות אחרונות' : 'Recent Errors'}</div>
+                        <div className="space-y-1">
+                            {usage.recent_errors.map((e, i) => (
+                                <div key={i} className="text-xs p-2 bg-red-50 rounded text-red-600">
+                                    <span className="text-muted/60">{new Date(e.timestamp).toLocaleString()}</span> {e.labels}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function ProvidersTab({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [data, setData] = useState([]);
     const [status, setStatus] = useState([]);
+    const [selectedProvider, setSelectedProvider] = useState(null);
     const chartRef = useRef(null);
     const chartInstance = useRef(null);
 
@@ -811,11 +902,11 @@ function ProvidersTab({ api, i18n }) {
                         const s = statsMap[p.name];
                         const def = provDef(p.name);
                         return (
-                            <div key={p.name} className="card p-4">
+                            <div key={p.name} className="card p-4" style={{ cursor: 'pointer' }} onClick={() => setSelectedProvider(p.name)}>
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="text-lg">{def.icon || '📦'}</span>
                                     <span className="font-bold text-ink flex-1">{p.name}</span>
-                                    <button onClick={() => toggle(p.name, true)} className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                                    <button onClick={(e) => { e.stopPropagation(); toggle(p.name, true); }} className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
                                         title={he ? 'השבת' : 'Disable'}>{he ? 'השבת' : 'Disable'}</button>
                                 </div>
                                 {s ? (
@@ -825,7 +916,7 @@ function ProvidersTab({ api, i18n }) {
                                         <div className="flex justify-between"><span className="text-muted">{i18n.t('latency')}</span><span className="text-ink" dir="ltr">{s.avg_latency_ms}ms</span></div>
                                     </div>
                                 ) : (
-                                    <span className="text-muted text-xs">{he ? 'אין סריקות עדיין' : 'No scans yet'}</span>
+                                    <span className="text-muted text-xs">{he ? 'אין סריקות עדיין — לחצו לפרטים' : 'No scans yet — click for details'}</span>
                                 )}
                             </div>
                         );
@@ -874,6 +965,9 @@ function ProvidersTab({ api, i18n }) {
                     })}
                 </div>
             </div>}
+
+            {/* Usage modal */}
+            {selectedProvider && <ProviderUsageModal api={api} i18n={i18n} provider={selectedProvider} onClose={() => setSelectedProvider(null)} />}
         </div>
     );
 }
@@ -1550,22 +1644,23 @@ function UpdateChecker({ api, i18n }) {
                     <div className="bg-warm rounded-lg p-4 text-sm">
                         <div className="flex justify-between mb-1">
                             <span className="text-muted">{he ? 'גרסה נוכחית' : 'Current'}</span>
-                            <span className="text-ink font-medium">v{status.local_version}</span>
+                            <span className="text-ink font-medium" dir="ltr">v{status.local_version} ({status.local_sha || '?'})</span>
                         </div>
                         <div className="flex justify-between mb-1">
-                            <span className="text-muted">{he ? 'קומיט אחרון ב-GitHub' : 'Latest GitHub commit'}</span>
+                            <span className="text-muted">{he ? 'אחרון ב-GitHub' : 'Latest on GitHub'}</span>
                             <span className="text-ink font-mono text-xs" dir="ltr">{status.remote_sha}</span>
                         </div>
-                        <div className="flex justify-between mb-1">
-                            <span className="text-muted">{he ? 'הודעה' : 'Message'}</span>
-                            <span className="text-ink text-xs" dir="ltr">{status.remote_message?.substring(0, 60)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-muted">{he ? 'תאריך' : 'Date'}</span>
-                            <span className="text-ink text-xs">{status.remote_date ? new Date(status.remote_date).toLocaleDateString() : '-'}</span>
-                        </div>
+                        {status.update_available ? (
+                            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                                {he ? '🔔 קיים עדכון: ' : '🔔 Update available: '}{status.remote_message?.substring(0, 60)}
+                            </div>
+                        ) : (
+                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                                {he ? '✅ המערכת מעודכנת!' : '✅ You are up to date!'}
+                            </div>
+                        )}
                     </div>
-                    <button className={`btn btn-green w-full mt-2 ${updating ? 'opacity-50' : ''}`} disabled={updating} onClick={async () => {
+                    {status.update_available && <button className={`btn btn-green w-full mt-2 ${updating ? 'opacity-50' : ''}`} disabled={updating} onClick={async () => {
                         setUpdating(true);
                         setUpdateStatus(he ? '⏳ מעדכן...' : '⏳ Updating...');
                         const res = await api.postApi('/api/v1/admin/deploy', {});
@@ -1578,7 +1673,7 @@ function UpdateChecker({ api, i18n }) {
                         setUpdating(false);
                     }}>
                         ⚡ {he ? 'עדכן עכשיו' : 'Update Now'}
-                    </button>
+                    </button>}
                     {updateStatus && <div className="text-sm mt-2">{updateStatus}</div>}
                 </div>
             )}
@@ -1640,9 +1735,10 @@ function AboutTab({ api, i18n }) {
                 <h2 className="text-4xl font-bold font-display" style={{ fontFamily: 'Playfair Display, serif' }}>SafeEyes</h2>
                 <p className="text-muted text-lg mt-3">{he ? 'מערכת סריקת תוכן מזיק בקוד פתוח' : 'Open-Source Content Safety Scanner'}</p>
                 <p className="text-muted/70 text-sm mt-1">v{VERSION}</p>
-                <div className="flex justify-center gap-3 mt-6">
+                <div className="flex justify-center gap-3 mt-6 flex-wrap">
                     <a href="https://github.com/Dandona100/SafeEyes" target="_blank" className="btn btn-blue text-sm">⭐ GitHub</a>
-                    <a href="https://lhflow.com/SafeEyes/docs.html" target="_blank" className="btn btn-gray text-sm">{he ? '📚 תיעוד' : '📚 Docs'}</a>
+                    <a href="https://lhflow.com/SafeEye/" target="_blank" className="btn btn-gold text-sm">{he ? '🌐 דמו' : '🌐 Demo'}</a>
+                    <a href="https://lhflow.com/SafeEye/docs.html" target="_blank" className="btn btn-gray text-sm">{he ? '📚 תיעוד' : '📚 Docs'}</a>
                 </div>
             </div>
 

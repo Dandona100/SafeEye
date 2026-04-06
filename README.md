@@ -2,7 +2,7 @@
 
 **AI-powered content safety scanner** — 20 providers in parallel, REST API, webhooks, batch processing, and a React dashboard.
 
-> **הקב"ה ציווה לשמור את העיניים ממראות אסורות. SafeEyes עוזרת.**
+> **הקב"ה ציווה לשמור את העיניים ממראות אסורות. SafeEyes מסייעת.**
 > 
 > 🇮🇱 Israeli open-source project. Proudly made in Israel.
 

@@ -21,7 +21,7 @@ services:
       resources:
         limits:
           cpus: '2'
-          memory: 1500M
+          memory: 3000M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1985/health"]
       interval: 30s

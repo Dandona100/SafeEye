@@ -25,9 +25,33 @@ def _get_detector():
     return _detector
 
 
+def _resize_if_needed(file_path: str, max_dim: int = 640) -> str:
+    """Downscale large images before inference — massive speedup on CPU."""
+    try:
+        from PIL import Image
+        img = Image.open(file_path)
+        w, h = img.size
+        if max(w, h) <= max_dim:
+            return file_path
+        ratio = max_dim / max(w, h)
+        new_size = (int(w * ratio), int(h * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+        import tempfile, os
+        tmp = tempfile.NamedTemporaryFile(suffix=os.path.splitext(file_path)[1], delete=False)
+        img.save(tmp.name)
+        return tmp.name
+    except Exception:
+        return file_path
+
+
 def _scan_sync(file_path: str) -> dict:
+    resized = _resize_if_needed(file_path)
     detector = _get_detector()
-    detections = detector.detect(file_path)
+    detections = detector.detect(resized)
+    if resized != file_path:
+        import os
+        try: os.unlink(resized)
+        except: pass
     nsfw_labels = []
     max_confidence = 0.0
     medium_count = 0

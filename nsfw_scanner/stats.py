@@ -115,6 +115,66 @@ async def get_provider_stats() -> list[ProviderStats]:
         await db.close()
 
 
+async def get_provider_usage(provider_name: str) -> dict:
+    """Detailed usage stats for a single provider."""
+    db = await get_db()
+    try:
+        # Basic counts
+        row = await db.execute_fetchall(
+            "SELECT COUNT(*) as total, SUM(is_nsfw) as flagged, SUM(error) as errors, "
+            "SUM(skipped) as skipped, AVG(latency_ms) as avg_lat, "
+            "MIN(latency_ms) as min_lat, MAX(latency_ms) as max_lat "
+            "FROM provider_results WHERE provider=?", (provider_name,))
+        r = dict(row[0]) if row else {}
+
+        # Daily usage (last 30 days)
+        daily = await db.execute_fetchall(
+            "SELECT DATE(sh.timestamp) as day, COUNT(*) as count "
+            "FROM provider_results pr JOIN scan_history sh ON pr.scan_id = sh.id "
+            "WHERE pr.provider=? AND sh.timestamp >= DATE('now', '-30 days') "
+            "GROUP BY day ORDER BY day", (provider_name,))
+
+        # Hourly distribution
+        hourly = await db.execute_fetchall(
+            "SELECT CAST(strftime('%H', sh.timestamp) AS INTEGER) as hour, COUNT(*) as count "
+            "FROM provider_results pr JOIN scan_history sh ON pr.scan_id = sh.id "
+            "WHERE pr.provider=? GROUP BY hour ORDER BY hour", (provider_name,))
+
+        # Accuracy (if feedback exists)
+        acc = await db.execute_fetchall(
+            "SELECT COUNT(*) as total, "
+            "SUM(CASE WHEN pr.is_nsfw = af.actual_nsfw THEN 1 ELSE 0 END) as correct "
+            "FROM provider_results pr JOIN accuracy_feedback af ON pr.scan_id = af.scan_id "
+            "WHERE pr.provider=?", (provider_name,))
+        accuracy = None
+        if acc and acc[0][0] > 0:
+            accuracy = round(acc[0][1] / acc[0][0] * 100, 1)
+
+        # Recent errors
+        errors = await db.execute_fetchall(
+            "SELECT pr.labels, sh.timestamp FROM provider_results pr "
+            "JOIN scan_history sh ON pr.scan_id = sh.id "
+            "WHERE pr.provider=? AND pr.error=1 ORDER BY sh.timestamp DESC LIMIT 5",
+            (provider_name,))
+
+        return {
+            "provider": provider_name,
+            "total_scans": r.get("total", 0),
+            "nsfw_flagged": r.get("flagged", 0) or 0,
+            "errors": r.get("errors", 0) or 0,
+            "skipped": r.get("skipped", 0) or 0,
+            "avg_latency_ms": round(r.get("avg_lat", 0) or 0, 1),
+            "min_latency_ms": round(r.get("min_lat", 0) or 0, 1),
+            "max_latency_ms": round(r.get("max_lat", 0) or 0, 1),
+            "accuracy": accuracy,
+            "daily_usage": [{"day": dict(d)["day"], "count": dict(d)["count"]} for d in daily],
+            "hourly_distribution": [{"hour": dict(h)["hour"], "count": dict(h)["count"]} for h in hourly],
+            "recent_errors": [{"labels": dict(e)["labels"], "timestamp": dict(e)["timestamp"]} for e in errors],
+        }
+    finally:
+        await db.close()
+
+
 async def get_history(limit: int = 50, offset: int = 0, nsfw_only: bool = False,
                       requesting_token: str = None) -> list[HistoryItem]:
     db = await get_db()

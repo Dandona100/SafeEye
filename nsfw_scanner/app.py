@@ -298,13 +298,20 @@ async def lifespan(app: FastAPI):
         from nsfw_scanner.scanner import load_disabled_providers
         load_disabled_providers(set(disabled_str.split(",")))
 
-    # Preload NudeNet model to avoid cold-start on first request
+    # Preload models to avoid cold-start on first request
     try:
         from nsfw_scanner.providers.nudenet_provider import _get_detector
         _get_detector()
         logger.info("NudeNet model preloaded")
     except Exception as e:
         logger.warning(f"NudeNet preload failed: {e}")
+
+    try:
+        from nsfw_scanner.providers.marqo_nsfw_provider import _get_model
+        _get_model()
+        logger.info("Marqo NSFW model preloaded")
+    except Exception as e:
+        logger.debug(f"Marqo NSFW preload skipped: {e}")
 
     logger.info(f"Active providers: {get_active_providers()}")
 
@@ -1159,6 +1166,13 @@ async def get_stats(authorization: str = Header(None)):
 async def get_provider_stats(authorization: str = Header(None)):
     await require_token(authorization)
     return await stats.get_provider_stats()
+
+
+@app.get("/api/v1/stats/providers/{provider_name}/usage")
+async def get_provider_usage(provider_name: str, authorization: str = Header(None)):
+    """Detailed usage stats for a single provider — calls, latency, daily breakdown, errors."""
+    await require_token(authorization)
+    return await stats.get_provider_usage(provider_name)
 
 
 @app.get("/api/v1/stats/history", response_model=list[HistoryItem])
@@ -2682,16 +2696,25 @@ async def check_update(authorization: str = Header(None)):
                 else:
                     return {"status": "error", "message": f"GitHub API returned {resp.status}"}
 
-        from nsfw_scanner import __init__  # noqa
-        local_version = VERSION
+        # Get local commit SHA
+        local_sha = ""
+        try:
+            import subprocess as _sp
+            result = _sp.run(["git", "rev-parse", "--short=7", "HEAD"],
+                             capture_output=True, text=True, timeout=5,
+                             cwd=os.path.dirname(os.path.dirname(__file__)))
+            local_sha = result.stdout.strip()
+        except Exception:
+            pass
 
         return {
             "status": "ok",
-            "local_version": local_version,
+            "local_version": VERSION,
+            "local_sha": local_sha,
             "remote_sha": remote_sha,
             "remote_message": remote_msg,
             "remote_date": remote_date,
-            "update_available": True,  # Since we can't compare easily, always suggest checking
+            "update_available": local_sha != remote_sha and bool(local_sha),
             "install_command": "cd SafeEyes && git pull && docker compose up -d --build",
         }
     except Exception as e:
