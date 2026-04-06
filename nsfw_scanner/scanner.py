@@ -73,6 +73,57 @@ def compute_phash(file_path: str, hash_size: int = 8) -> str | None:
         return None
 
 
+def compare_images(file_a: str, file_b: str) -> dict:
+    """Compare two images — pHash distance, pixel diff %, structural similarity."""
+    try:
+        img_a = Image.open(file_a).convert('RGB')
+        img_b = Image.open(file_b).convert('RGB')
+
+        # Resize to same dimensions
+        size = (max(img_a.width, img_b.width), max(img_a.height, img_b.height))
+        img_a = img_a.resize(size, Image.LANCZOS)
+        img_b = img_b.resize(size, Image.LANCZOS)
+
+        # pHash distance
+        hash_a = compute_phash(file_a)
+        hash_b = compute_phash(file_b)
+        hamming = 0
+        if hash_a and hash_b:
+            xor = int(hash_a, 16) ^ int(hash_b, 16)
+            hamming = bin(xor).count('1')
+
+        # Pixel diff
+        import numpy as np
+        arr_a = np.array(img_a, dtype=np.float32)
+        arr_b = np.array(img_b, dtype=np.float32)
+        diff = np.abs(arr_a - arr_b)
+        diff_pct = round((diff > 25).mean() * 100, 2)  # pixels with >25/255 diff
+
+        # Generate diff image (red highlights)
+        diff_mask = (diff.mean(axis=2) > 25).astype(np.uint8) * 255
+        diff_img = Image.fromarray(diff_mask, mode='L')
+
+        # Save diff image to temp
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        diff_img.save(tmp.name)
+
+        # Similarity score (0-100, 100 = identical)
+        similarity = round(100 - diff_pct, 2)
+
+        return {
+            "phash_a": hash_a,
+            "phash_b": hash_b,
+            "hamming_distance": hamming,
+            "pixel_diff_pct": diff_pct,
+            "similarity": similarity,
+            "diff_image_path": tmp.name,
+            "identical": hamming == 0 and diff_pct < 0.1,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".heic", ".heif"}
 _VIDEO_EXT = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".3gp", ".m4v"}
 _VIDEO_SAMPLE_FRAMES = 30

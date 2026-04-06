@@ -738,12 +738,32 @@ def _compare_images(path1: str, path2: str) -> dict:
     mag2 = sum(b * b for b in h2) ** 0.5
     correlation = dot / (mag1 * mag2 + 1e-10)
 
+    # Pixel diff
+    pixel_diff_pct = 0.0
+    diff_image_b64 = None
+    try:
+        import numpy as np, base64, io
+        common_size = (min(img1.width, img2.width), min(img1.height, img2.height))
+        a = np.array(img1.convert("RGB").resize(common_size), dtype=np.float32)
+        b = np.array(img2.convert("RGB").resize(common_size), dtype=np.float32)
+        diff = np.abs(a - b)
+        pixel_diff_pct = round((diff > 25).mean() * 100, 2)
+        diff_mask = (diff.mean(axis=2) > 25).astype(np.uint8) * 255
+        diff_img = _PILImage.fromarray(diff_mask, mode='L')
+        buf = io.BytesIO()
+        diff_img.save(buf, format='PNG')
+        diff_image_b64 = base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        pass
+
     return {
         "image1_size": list(img1.size),
         "image2_size": list(img2.size),
         "file_size1": size1,
         "file_size2": size2,
         "histogram_correlation": round(correlation, 4),
+        "pixel_diff_pct": pixel_diff_pct,
+        "diff_image_base64": diff_image_b64,
         "changes": changes,
     }
 

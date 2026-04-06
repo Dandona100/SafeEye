@@ -975,7 +975,7 @@ function ProviderUsageModal({ api, i18n, provider, onClose }) {
     );
 }
 
-function ProvidersTab({ api, i18n }) {
+function ProvidersTab({ api, i18n, onNavigate }) {
     const he = i18n.lang === 'he';
     const [data, setData] = useState([]);
     const [status, setStatus] = useState([]);
@@ -1103,7 +1103,7 @@ function ProvidersTab({ api, i18n }) {
                                 </div>
                                 <p className="text-xs text-muted mb-1">{he ? (def.desc_he || '') : (def.desc_en || '')}</p>
                                 {def.install && <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mt-1 select-all" dir="ltr">{def.install}</div>}
-                                {def.fields && <p className="text-xs text-gold-dark mt-1">{he ? '→ הגדר בטאב חיבורים' : '→ Configure in Integrations tab'}</p>}
+                                {def.fields && <button className="text-xs text-gold-dark mt-1" style={{ background:'none',border:'none',cursor:'pointer',padding:0 }} onClick={() => onNavigate && onNavigate('integrations')}>{he ? '→ הגדר בטאב חיבורים' : '→ Configure in Integrations tab'}</button>}
                                 {!def.install && !def.fields && <p className="text-xs text-green-600">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
                             </div>
                         );
@@ -2845,7 +2845,7 @@ function App() {
             <UpdateBanner api={api} i18n={i18n} />
             <div className="content-bidi" data-dir={i18n.isRtl ? 'rtl' : 'ltr'}>
             {tab === 'overview' && <OverviewTab api={api} i18n={i18n} />}
-            {tab === 'providers' && <ProvidersTab api={api} i18n={i18n} />}
+            {tab === 'providers' && <ProvidersTab api={api} i18n={i18n} onNavigate={setTab} />}
             {tab === 'history' && <HistoryTab api={api} i18n={i18n} />}
             {tab === 'tokens' && <TokensTab api={api} i18n={i18n} />}
             {tab === 'integrations' && <IntegrationsTab api={api} i18n={i18n} />}
