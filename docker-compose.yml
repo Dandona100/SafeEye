@@ -16,7 +16,7 @@ services:
       - ./nsfw_scanner/static:/app/nsfw_scanner/static
       - ./nsfw_scanner:/app/nsfw_scanner
       - ./.git:/app/.git
-      - pip_cache:/usr/local/lib/python3.11/site-packages
+      - pip_extras:/app/pip_extras
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       resources:
@@ -31,4 +31,4 @@ services:
       start_period: 20s
 
 volumes:
-  pip_cache:
+  pip_extras:

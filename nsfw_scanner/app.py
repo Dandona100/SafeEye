@@ -282,6 +282,13 @@ def find_available_port(preferred: int = DEFAULT_PORT) -> int:
 async def lifespan(app: FastAPI):
     """Startup: init DB, preload NudeNet model."""
     os.makedirs(TEMP_DIR, exist_ok=True)
+    # Add pip_extras to path (packages installed via dashboard)
+    _extras = "/app/pip_extras"
+    if os.path.isdir(_extras):
+        import sys as _s, site
+        if _extras not in _s.path:
+            _s.path.insert(0, _extras)
+            site.addsitedir(_extras)
     await database.init_db()
     logger.info("Database initialized")
 
@@ -306,9 +313,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"NudeNet preload failed: {e}")
 
-    # Marqo/other torch models load lazily on first scan (download from HuggingFace)
-
-    logger.info(f"Active providers: {get_active_providers()}")
+    # Log active providers (don't let a broken provider crash startup)
+    try:
+        active = get_active_providers()
+        logger.info(f"Active providers: {active}")
+    except Exception as e:
+        logger.warning(f"Provider check failed: {e}")
 
     # Load existing pHashes into in-memory vector store
     try:
@@ -1445,20 +1455,33 @@ async def install_provider(body: dict, authorization: str = Header(None)):
         raise HTTPException(400, f"Unknown provider or no install needed: {name}")
     import subprocess
     try:
-        # Install torch + torchvision CPU-only first if needed
+        # Install to persistent volume so packages survive rebuilds
+        target_dir = "/app/pip_extras"
+        os.makedirs(target_dir, exist_ok=True)
+        # Ensure target is on Python path
+        import site
+        if target_dir not in sys.path:
+            sys.path.insert(0, target_dir)
+            site.addsitedir(target_dir)
+
         pkg_list = packages.split()
+        # Install torch + torchvision CPU-only first if needed
         if "torch" in pkg_list:
             pkg_list.remove("torch")
             torch_result = subprocess.run(
-                ["pip", "install", "--no-cache-dir", "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cpu"],
+                ["pip", "install", "--no-cache-dir", "--target", target_dir,
+                 "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cpu"],
                 capture_output=True, text=True, timeout=600,
             )
             if torch_result.returncode != 0:
                 return {"status": "error", "output": f"torch install failed: {torch_result.stderr[-500:]}"}
-        result = subprocess.run(
-            ["pip", "install", "--no-cache-dir"] + pkg_list,
-            capture_output=True, text=True, timeout=300,
-        ) if pkg_list else type('', (), {'returncode': 0, 'stdout': 'torch only', 'stderr': ''})()
+        if pkg_list:
+            result = subprocess.run(
+                ["pip", "install", "--no-cache-dir", "--target", target_dir] + pkg_list,
+                capture_output=True, text=True, timeout=300,
+            )
+        else:
+            result = type('R', (), {'returncode': 0, 'stdout': 'ok', 'stderr': ''})()
         if result.returncode != 0:
             return {"status": "error", "output": result.stderr[-500:]}
         # Force re-check of providers — clear failed import cache
@@ -2697,10 +2720,13 @@ async def health():
     except Exception:
         nudenet_status = "not_loaded"
 
-    # Provider status
+    # Provider status (never let a broken provider crash the health check)
     providers_status = {}
     for p in _get_providers():
-        providers_status[p.name] = "ok" if p.is_configured() else "not_configured"
+        try:
+            providers_status[p.name] = "ok" if p.is_configured() else "not_configured"
+        except Exception:
+            providers_status[p.name] = "error"
     # Override nudenet with model-loaded status
     if "nudenet" in providers_status and providers_status["nudenet"] == "ok":
         providers_status["nudenet"] = nudenet_status

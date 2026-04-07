@@ -173,16 +173,27 @@ def load_disabled_providers(disabled: set[str]):
 
 
 def get_active_providers() -> list[str]:
-    return [p.name for p in _get_providers() if p.is_configured() and p.name not in _disabled_providers]
+    active = []
+    for p in _get_providers():
+        try:
+            if p.is_configured() and p.name not in _disabled_providers:
+                active.append(p.name)
+        except Exception:
+            pass
+    return active
 
 
 def get_all_providers_status() -> list[dict]:
     """Return status of all providers with details."""
     results = []
     for p in _get_providers():
+        try:
+            configured = p.is_configured()
+        except Exception:
+            configured = False
         results.append({
             "name": p.name,
-            "configured": p.is_configured(),
+            "configured": configured,
             "disabled": p.name in _disabled_providers,
             "active": p.is_configured() and p.name not in _disabled_providers,
         })
