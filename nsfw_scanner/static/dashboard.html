@@ -1017,6 +1017,16 @@ function ProvidersTab({ api, i18n, onNavigate }) {
         reload();
     };
 
+    const [installing, setInstalling] = useState('');
+    const installProvider = async (name) => {
+        setInstalling(name);
+        try {
+            const res = await api.postApi('/api/v1/admin/providers/install', { provider: name });
+            if (res.status === 'ok') reload();
+        } catch {}
+        setInstalling('');
+    };
+
     if (!status.length) return <SkeletonLoader type="cards" count={4} />;
 
     const active = status.filter(s => s.active);
@@ -1102,7 +1112,15 @@ function ProvidersTab({ api, i18n, onNavigate }) {
                                     <span className="text-sm text-muted font-medium">{p.name}</span>
                                 </div>
                                 <p className="text-xs text-muted mb-1">{he ? (def.desc_he || '') : (def.desc_en || '')}</p>
-                                {def.install && <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 mt-1 select-all" dir="ltr">{def.install}</div>}
+                                {def.install && (
+                                    <div className="mt-2 space-y-1">
+                                        <button className="btn btn-green text-xs w-full" disabled={installing === p.name}
+                                            onClick={() => installProvider(p.name)}>
+                                            {installing === p.name ? (he ? '⏳ מתקין...' : '⏳ Installing...') : (he ? '📦 התקן' : '📦 Install')}
+                                        </button>
+                                        <div className="bg-ink rounded p-1.5 font-mono text-xs text-gray-300 select-all" dir="ltr">{def.install}</div>
+                                    </div>
+                                )}
                                 {def.fields && <button className="text-xs text-gold-dark mt-1" style={{ background:'none',border:'none',cursor:'pointer',padding:0 }} onClick={() => onNavigate && onNavigate('integrations')}>{he ? '→ הגדר בטאב חיבורים' : '→ Configure in Integrations tab'}</button>}
                                 {!def.install && !def.fields && <p className="text-xs text-green-600">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
                             </div>
@@ -2809,11 +2827,10 @@ function UpdateBanner({ api, i18n }) {
     const [dismissed, setDismissed] = useState(false);
     const he = i18n.lang === 'he';
     useEffect(() => {
-        // Silent background check on load
         api.fetchApi('/api/v1/admin/check-update').then(data => {
-            if (data.status === 'ok' && data.remote_sha) {
-                const lastSeen = localStorage.getItem('safeeye_last_sha');
-                if (lastSeen !== data.remote_sha) setUpdate(data);
+            if (data.status === 'ok' && data.update_available) {
+                const lastDismissed = localStorage.getItem('safeeye_last_sha');
+                if (lastDismissed !== data.remote_sha) setUpdate(data);
             }
         }).catch(() => {});
     }, []);
