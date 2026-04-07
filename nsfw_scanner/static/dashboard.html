@@ -745,48 +745,44 @@ function D3Analytics({ api, i18n, data }) {
         svg.append('text').attr('text-anchor', 'middle').attr('dy', '1em').style('font-size', '0.5rem').style('fill', '#7A7A7A').text(he ? 'סריקות' : 'scans');
     }, [data]);
 
-    // Heatmap — hourly activity
+    // Daily bar chart — scans per day (last 7 days)
     useEffect(() => {
         if (!heatmapRef.current || !timeline.length) return;
         const el = heatmapRef.current;
         el.innerHTML = '';
-        const margin = {top: 14, right: 4, bottom: 4, left: 24};
-        const cellSize = 8, gap = 1;
-        const days = [...new Set(timeline.map(d => d.day))].sort().slice(-7);
-        const w = 24 * (cellSize + gap) + margin.left + margin.right;
-        const h = days.length * (cellSize + gap) + margin.top + margin.bottom;
-        const maxCount = Math.max(1, ...timeline.map(d => d.count));
 
-        const color = d3.scaleSequential(d3.interpolateYlOrRd).domain([0, maxCount]);
+        // Aggregate by day
+        const dayMap = {};
+        timeline.forEach(d => { dayMap[d.day] = (dayMap[d.day] || 0) + d.count; });
+        const days = Object.entries(dayMap).sort((a,b) => a[0].localeCompare(b[0])).slice(-7);
+        if (!days.length) return;
+
+        const margin = {top: 4, right: 4, bottom: 16, left: 4};
+        const w = 200, h = 80;
+        const maxCount = Math.max(1, ...days.map(d => d[1]));
+        const barW = (w - margin.left - margin.right) / days.length - 2;
 
         const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
         const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+        const chartH = h - margin.top - margin.bottom;
 
-        // Hour labels
-        [0,6,12,18,23].forEach(h => {
-            g.append('text').attr('x', h * (cellSize + gap) + cellSize/2).attr('y', -6).attr('text-anchor', 'middle').style('font-size', '8px').style('fill', '#7A7A7A').text(h);
-        });
-
-        // Day labels
-        days.forEach((day, i) => {
-            g.append('text').attr('x', -4).attr('y', i * (cellSize + gap) + cellSize/2 + 3).attr('text-anchor', 'end').style('font-size', '7px').style('fill', '#7A7A7A').text(day.slice(5));
-        });
-
-        // Cells
-        const lookup = {};
-        timeline.forEach(d => { lookup[`${d.day}-${d.hour}`] = d.count; });
-
-        days.forEach((day, di) => {
-            for (let h = 0; h < 24; h++) {
-                const count = lookup[`${day}-${h}`] || 0;
-                g.append('rect')
-                    .attr('x', h * (cellSize + gap)).attr('y', di * (cellSize + gap))
-                    .attr('width', cellSize).attr('height', cellSize)
-                    .attr('rx', 3).attr('fill', count > 0 ? color(count) : '#F5F3F0')
-                    .attr('opacity', 0)
-                    .append('title').text(`${day} ${h}:00 — ${count} scans`);
-                g.select(`rect:last-child`).transition().delay((di * 24 + h) * 8).duration(300).attr('opacity', 1);
-            }
+        days.forEach(([day, count], i) => {
+            const barH = (count / maxCount) * chartH;
+            const x = i * ((w - margin.left - margin.right) / days.length) + 1;
+            // Bar
+            g.append('rect')
+                .attr('x', x).attr('y', chartH).attr('width', barW).attr('height', 0)
+                .attr('rx', 2).attr('fill', '#C9A962')
+                .transition().duration(400).delay(i * 60)
+                .attr('y', chartH - barH).attr('height', barH);
+            // Count on top
+            g.append('text').attr('x', x + barW/2).attr('y', chartH - barH - 2)
+                .attr('text-anchor', 'middle').style('font-size', '7px').style('fill', 'currentColor')
+                .text(count).attr('opacity', 0).transition().delay(i * 60 + 300).attr('opacity', 1);
+            // Day label
+            g.append('text').attr('x', x + barW/2).attr('y', chartH + 10)
+                .attr('text-anchor', 'middle').style('font-size', '6px').style('fill', '#7A7A7A')
+                .text(day.slice(5));
         });
     }, [timeline]);
 
@@ -837,7 +833,7 @@ function D3Analytics({ api, i18n, data }) {
 
             {/* Hourly Heatmap */}
             <div className="card p-3">
-                <h4 className="text-ink text-xs font-medium mb-1">{he ? 'פעילות לפי שעה' : 'Hourly Activity'}</h4>
+                <h4 className="text-ink text-xs font-medium mb-1">{he ? 'סריקות יומיות' : 'Daily Scans'}</h4>
                 <div ref={heatmapRef} style={{ overflowX: 'auto', maxHeight: '120px' }} dir="ltr"></div>
                 {!timeline.length && <p className="text-muted text-xs text-center">{he ? 'אין נתונים' : 'No data'}</p>}
             </div>

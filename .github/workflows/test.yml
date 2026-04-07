@@ -37,6 +37,9 @@ jobs:
         run: |
           echo "SCAN_API_MASTER_TOKEN=test123" > .env
           docker compose up -d
-          sleep 30
+          for i in 1 2 3 4 5 6; do
+            sleep 10
+            curl -sf http://localhost:1985/health && break || echo "Waiting... ($i)"
+          done
           curl -f http://localhost:1985/health
           docker compose down
