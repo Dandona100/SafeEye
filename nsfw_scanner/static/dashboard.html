@@ -1600,17 +1600,50 @@ function IntegrationsTab({ api, i18n }) {
 /* ========== COMMUNITY ========== */
 function ReportTab({ api, i18n }) {
     const he = i18n.lang === 'he';
+    const [gh, setGh] = useState(null);
+    useEffect(() => {
+        fetch('https://api.github.com/repos/Dandona100/SafeEyes', {headers:{Accept:'application/vnd.github.v3+json'}})
+            .then(r => r.json()).then(setGh).catch(() => {});
+    }, []);
+
     return (
         <div className="space-y-6">
-            <div className="card p-8 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
-                <div className="text-5xl mb-4">🏘️</div>
-                <h3 className="text-2xl font-bold text-ink mb-2" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'הקהילה' : 'Community'}</h3>
-                <p className="text-muted text-sm mb-6">{he ? 'דווחו על באגים, הציעו פיצ\'רים, והצביעו — באתר הרשמי' : 'Report bugs, suggest features, and vote — on the official site'}</p>
+            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-3xl mb-2">🏘️</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'הקהילה' : 'Community'}</h3>
+                <p className="text-muted text-xs mt-1">{he ? 'טראפיק הריפו, דיווחים, ותרומה לפרויקט' : 'Repo traffic, reports, and contributing to the project'}</p>
+            </div>
+
+            {/* GitHub repo stats */}
+            {gh && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <a href="https://github.com/Dandona100/SafeEyes/stargazers" target="_blank" rel="noopener" className="card p-4 text-center clickable" style={{ textDecoration:'none' }}>
+                        <div className="text-2xl font-bold" style={{ color:'#C9A962' }}>{gh.stargazers_count || 0}</div>
+                        <div className="text-xs text-muted">⭐ Stars</div>
+                    </a>
+                    <a href="https://github.com/Dandona100/SafeEyes/network/members" target="_blank" rel="noopener" className="card p-4 text-center clickable" style={{ textDecoration:'none' }}>
+                        <div className="text-2xl font-bold text-ink">{gh.forks_count || 0}</div>
+                        <div className="text-xs text-muted">🍴 Forks</div>
+                    </a>
+                    <a href="https://github.com/Dandona100/SafeEyes/issues" target="_blank" rel="noopener" className="card p-4 text-center clickable" style={{ textDecoration:'none' }}>
+                        <div className="text-2xl font-bold text-ink">{gh.open_issues_count || 0}</div>
+                        <div className="text-xs text-muted">🐛 Issues</div>
+                    </a>
+                    <a href="https://github.com/Dandona100/SafeEyes/watchers" target="_blank" rel="noopener" className="card p-4 text-center clickable" style={{ textDecoration:'none' }}>
+                        <div className="text-2xl font-bold text-ink">{gh.subscribers_count || gh.watchers_count || 0}</div>
+                        <div className="text-xs text-muted">👁️ Watchers</div>
+                    </a>
+                </div>
+            )}
+
+            {/* Links */}
+            <div className="card p-5 text-center">
                 <a href="https://lhflow.com/SafeEye/#community" target="_blank" rel="noopener"
-                    className="btn btn-gold text-base" style={{ textDecoration: 'none', padding: '14px 32px' }}>
-                    {he ? '🌐 פתח את עמוד הקהילה' : '🌐 Open Community Page'}
+                    className="btn btn-gold" style={{ textDecoration: 'none', padding: '12px 28px' }}>
+                    {he ? '🌐 עמוד הקהילה הרשמי' : '🌐 Official Community Page'}
                 </a>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <a href="https://github.com/Dandona100/SafeEyes/issues/new?labels=bug" target="_blank" rel="noopener" className="card p-5 text-center clickable" style={{ textDecoration: 'none' }}>
                     <div className="text-2xl mb-2">🐛</div>
@@ -1628,6 +1661,13 @@ function ReportTab({ api, i18n }) {
                     <div className="text-xs text-muted mt-1">Telegram</div>
                 </a>
             </div>
+
+            {/* Repo info */}
+            {gh && (
+                <div className="card p-4 text-center text-xs text-muted">
+                    <span dir="ltr">{gh.language} · {gh.license?.spdx_id || 'MIT'} · {new Date(gh.pushed_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'})} · {(gh.size/1024).toFixed(1)}MB</span>
+                </div>
+            )}
         </div>
     );
 }
