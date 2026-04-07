@@ -441,6 +441,30 @@ function LoginScreen({ onLogin, i18n }) {
     );
 }
 
+function HelpTip({ i18n, items }) {
+    const [open, setOpen] = useState(false);
+    const he = i18n.lang === 'he';
+    return (
+        <div className="card p-3" style={{ borderColor: open ? '#C9A962' : undefined }}>
+            <button onClick={() => setOpen(!open)} className="flex items-center gap-2 w-full" style={{ background:'none',border:'none',cursor:'pointer',padding:0 }}>
+                <span className="text-sm">❓</span>
+                <span className="text-xs font-medium text-gold-dark flex-1 text-left">{he ? 'עזרה' : 'Help'}</span>
+                <span className="text-xs text-muted">{open ? '▲' : '▼'}</span>
+            </button>
+            {open && (
+                <div className="mt-3 space-y-2 text-xs text-muted">
+                    {items.map((item, i) => (
+                        <div key={i} className="flex gap-2">
+                            <span>{item.icon}</span>
+                            <span>{he ? item.he : item.en}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function SkeletonLoader({ type = 'card', count = 1 }) {
     const items = Array.from({ length: count });
     if (type === 'stats') return (
@@ -708,6 +732,13 @@ function OverviewTab({ api, i18n }) {
 
             {/* Client-side pre-scan toggle */}
             <PreScanCard i18n={i18n} />
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '📊', he: 'הכרטיסים למעלה מציגים סיכום סריקות, NSFW שזוהו, וזמן תגובה ממוצע.', en: 'Top cards show scan summary, NSFW detected, and average response time.' },
+                { icon: '⚡', he: 'אם ה-Latency גבוה — לחצו "למה?" לקבלת הסבר ופתרון.', en: 'If latency is high — click "Why?" for explanation and solution.' },
+                { icon: '🟢', he: 'ספקים מסומנים Local (ירוק) או Cloud (כחול) — מקומי לא דורש אינטרנט.', en: 'Providers marked Local (green) or Cloud (blue) — local needs no internet.' },
+                { icon: '📡', he: 'פעילות אחרונה מציגה את 5 הסריקות האחרונות בזמן אמת.', en: 'Recent activity shows the last 5 scans in real-time.' },
+            ]} />
         </div>
     );
 }
@@ -1129,6 +1160,12 @@ function ProvidersTab({ api, i18n, onNavigate }) {
 
             {/* Usage modal */}
             {selectedProvider && <ProviderUsageModal api={api} i18n={i18n} provider={selectedProvider} onClose={() => setSelectedProvider(null)} />}
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '✅', he: 'ספקים פעילים סורקים כל תמונה במקביל. לחצו על ספק לצפייה בסטטיסטיקות.', en: 'Active providers scan every image in parallel. Click one for detailed stats.' },
+                { icon: '📦', he: 'לחצו "התקן" כדי להוסיף ספקים חדשים — ההתקנה רצה בתוך Docker.', en: 'Click "Install" to add providers — installation runs inside Docker.' },
+                { icon: '⏸️', he: 'השבתת ספק לא מוחקת אותו — רק מפסיקה להשתמש בו בסריקות.', en: 'Disabling a provider doesn\'t uninstall it — just stops using it in scans.' },
+            ]} />
         </div>
     );
 }
@@ -1219,6 +1256,11 @@ function HistoryTab({ api, i18n }) {
                 ))}
                 {items.length === 0 && <div className="card p-10 text-center"><div className="text-4xl mb-3">📋</div><p className="text-muted">{i18n.t('no_scans')}</p></div>}
             </div>
+            <HelpTip i18n={i18n} items={[
+                { icon: '🔍', he: 'לחצו על שורה כדי לראות תוצאות מפורטות מכל ספק.', en: 'Click a row to see detailed results from each provider.' },
+                { icon: '🚨', he: 'סננו NSFW בלבד עם הכפתור למעלה.', en: 'Filter NSFW only with the button above.' },
+                { icon: '🔒', he: 'כל טוקן רואה רק את הסריקות שלו — Multi-tenant.', en: 'Each token sees only its own scans — multi-tenant.' },
+            ]} />
         </div>
     );
 }
@@ -1342,6 +1384,12 @@ function TokensTab({ api, i18n }) {
             </div>
             {tokens.length === 0 && <div className="card p-10 text-center"><div className="text-4xl mb-3">🔑</div><p className="text-muted">{i18n.t('no_tokens')}</p></div>}
             {selectedToken && <TokenUsageModal api={api} i18n={i18n} tokenName={selectedToken} onClose={() => setSelectedToken(null)} />}
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '🔑', he: 'צרו טוקן לכל שירות/בוט — כל אחד מבודד ורואה רק את הסריקות שלו.', en: 'Create a token per service/bot — each is isolated and sees only its scans.' },
+                { icon: '📊', he: 'לחצו "שימוש" לצפייה בסטטיסטיקות מפורטות של כל טוקן.', en: 'Click "Usage" to view detailed statistics per token.' },
+                { icon: '🗑️', he: 'ביטול טוקן לא מוחק את היסטוריית הסריקות.', en: 'Revoking a token doesn\'t delete its scan history.' },
+            ]} />
         </div>
     );
 }
@@ -1593,6 +1641,12 @@ function IntegrationsTab({ api, i18n }) {
                     );
                 })}
             </div>
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '📦', he: 'לחצו "התקן" כדי להתקין ספק מקומי ישירות מהדשבורד.', en: 'Click "Install" to install a local provider directly from the dashboard.' },
+                { icon: '🔌', he: 'ספקי ענן דורשים API key — הירשמו דרך הלינק ליד כל ספק.', en: 'Cloud providers need an API key — sign up via the link next to each one.' },
+                { icon: '🔗', he: 'חברו את תוסף הדפדפן עם קוד חיבור — בראש העמוד.', en: 'Connect the browser extension with a pairing code — at the top of this page.' },
+            ]} />
         </div>
     );
 }
@@ -2564,6 +2618,12 @@ function CommandCenter({ api, i18n }) {
                     <p className="text-muted">{he ? 'אין אשכולות עדיין — סרקו תמונות כדי לראות דפוסים' : 'No clusters yet — scan images to see patterns'}</p>
                 </div>
             )}
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '🔗', he: 'אשכולות מציגים תוכן שנסרק מספר פעמים — אולי מופץ.', en: 'Clusters show content scanned multiple times — possibly being distributed.' },
+                { icon: '🧠', he: 'חיפוש וקטורי (FAISS) מאפשר למצוא תמונות דומות בזמן קצר.', en: 'Vector search (FAISS) finds similar images in milliseconds.' },
+                { icon: '🚨', he: 'אשכול אדום = לפחות סריקה אחת סומנה NSFW.', en: 'Red cluster = at least one scan flagged as NSFW.' },
+            ]} />
         </div>
     );
 }
@@ -2636,6 +2696,12 @@ function NetworkTab({ api, i18n }) {
                     <p className="text-muted text-xs text-center">{he ? 'הפעל את הרשת כדי לראות שרתים' : 'Enable network to see servers'}</p>
                 )}
             </div>
+
+            <HelpTip i18n={i18n} items={[
+                { icon: '🌍', he: 'לחצו "הצטרף" כדי לשתף מטא-דאטה אנונימית עם שרתים אחרים.', en: 'Click "Join" to share anonymous metadata with other servers.' },
+                { icon: '🔒', he: 'מזהה השרת אנונימי ומתחלף — אף אחד לא יכול לזהות אתכם.', en: 'Server ID is anonymous and rotates — nobody can identify you.' },
+                { icon: '📡', he: 'השרתים מתגלים אוטומטית — אין צורך בהגדרות ידניות.', en: 'Servers discover each other automatically — no manual config needed.' },
+            ]} />
         </div>
     );
 }
