@@ -2481,6 +2481,86 @@ function PathSetup({ api, i18n, baseDomain, pathPrefix, port, onDone }) {
     );
 }
 
+function CommandCenter({ api, i18n }) {
+    const he = i18n.lang === 'he';
+    const [data, setData] = useState(null);
+    const [vectorStats, setVectorStats] = useState(null);
+
+    useEffect(() => {
+        api.fetchApi('/api/v1/stats/clusters?limit=20').then(setData).catch(() => {});
+        api.fetchApi('/api/v1/scan/vector-stats').then(setVectorStats).catch(() => {});
+    }, []);
+
+    if (!data) return <SkeletonLoader type="cards" count={4} />;
+
+    return (
+        <div className="space-y-6">
+            <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <div className="text-3xl mb-2">🗺️</div>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'מרכז פיקוד' : 'Command Center'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'מפת התפשטות תוכן — אשכולות, דמיון, מגמות' : 'Content propagation map — clusters, similarity, trends'}</p>
+            </div>
+
+            {/* Key metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="card p-4 text-center">
+                    <div className="text-2xl font-bold" style={{ color: '#C9A962' }}>{data.total_scans}</div>
+                    <div className="text-xs text-muted">{he ? 'סריקות' : 'Total Scans'}</div>
+                </div>
+                <div className="card p-4 text-center">
+                    <div className="text-2xl font-bold" style={{ color: '#C0392B' }}>{data.total_clusters}</div>
+                    <div className="text-xs text-muted">{he ? 'אשכולות' : 'Clusters'}</div>
+                </div>
+                <div className="card p-4 text-center">
+                    <div className="text-2xl font-bold" style={{ color: '#2D8A56' }}>{data.total_unique}</div>
+                    <div className="text-xs text-muted">{he ? 'ייחודיים' : 'Unique'}</div>
+                </div>
+                <div className="card p-4 text-center">
+                    <div className="text-2xl font-bold text-ink">{vectorStats?.total_vectors || 0}</div>
+                    <div className="text-xs text-muted">{he ? 'וקטורים' : 'Vectors'} ({vectorStats?.backend || '?'})</div>
+                </div>
+            </div>
+
+            {/* Clusters — content seen multiple times */}
+            {data.clusters.length > 0 ? (
+                <div className="card p-6">
+                    <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>
+                        🔗 {he ? 'תוכן חוזר — אשכולות דמיון' : 'Recurring Content — Similarity Clusters'}
+                    </h4>
+                    <div className="space-y-3">
+                        {data.clusters.map((c, i) => (
+                            <div key={i} className="p-3 bg-warm rounded-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold" style={{ color: c.scans.some(s => s.is_nsfw) ? '#C0392B' : '#2D8A56' }}>
+                                            {c.scans.some(s => s.is_nsfw) ? '🚨' : '✅'}
+                                        </span>
+                                        <span className="text-xs font-mono text-muted" dir="ltr">#{c.cluster_id}</span>
+                                    </div>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold-dark font-medium">{c.count}x</span>
+                                </div>
+                                <div className="flex gap-1 flex-wrap">
+                                    {c.scans.map((s, j) => (
+                                        <div key={j} className="text-xs px-2 py-1 rounded bg-white/50" title={`${s.scan_id} — ${s.timestamp}`}>
+                                            <span className="text-muted/60">{new Date(s.timestamp).toLocaleDateString()}</span>
+                                            {s.source !== 'api' && <span className="text-gold-dark ml-1">({s.source})</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <div className="card p-8 text-center">
+                    <div className="text-3xl mb-2">📭</div>
+                    <p className="text-muted">{he ? 'אין אשכולות עדיין — סרקו תמונות כדי לראות דפוסים' : 'No clusters yet — scan images to see patterns'}</p>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function NetworkTab({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [status, setStatus] = useState(null);
@@ -2830,6 +2910,7 @@ function App() {
         { id: 'tokens', label: i18n.t('tokens'), icon: '🔑', admin: true },
         { id: 'integrations', label: i18n.t('integrations'), icon: '🔗', admin: true },
         { id: 'docs', label: 'API', icon: '📚' },
+        { id: 'command', label: i18n.lang === 'he' ? 'מרכז פיקוד' : 'Command Center', icon: '🗺️', admin: true },
         { id: 'network', label: i18n.lang === 'he' ? 'רשת' : 'Network', icon: '🌍', admin: true },
         { id: 'domain', label: i18n.lang === 'he' ? 'דומיין' : 'Domain', icon: '🌐', admin: true },
         { id: 'community', label: i18n.lang === 'he' ? 'קהילה' : 'Community', icon: '🏘️' },
@@ -2868,6 +2949,7 @@ function App() {
             {tab === 'tokens' && <TokensTab api={api} i18n={i18n} />}
             {tab === 'integrations' && <IntegrationsTab api={api} i18n={i18n} />}
             {tab === 'docs' && <ApiDocsTab api={api} i18n={i18n} onNavigate={setTab} />}
+            {tab === 'command' && <CommandCenter api={api} i18n={i18n} />}
             {tab === 'network' && <NetworkTab api={api} i18n={i18n} />}
             {tab === 'domain' && <DomainTab api={api} i18n={i18n} />}
             {tab === 'community' && <ReportTab api={api} i18n={i18n} />}

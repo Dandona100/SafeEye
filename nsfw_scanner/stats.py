@@ -207,6 +207,51 @@ async def get_token_usage(token_name: str) -> dict:
         await db.close()
 
 
+async def get_content_clusters(limit: int = 50) -> list[dict]:
+    """Group scans by similar pHash — content propagation clusters."""
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall(
+            "SELECT id, timestamp, phash, is_nsfw, confidence, labels, source "
+            "FROM scan_history WHERE phash IS NOT NULL "
+            "ORDER BY timestamp DESC LIMIT ?", (limit * 5,))  # fetch more to cluster
+
+        # Simple clustering: group by pHash prefix (first 4 hex chars = 16 bits)
+        clusters: dict[str, list] = {}
+        for r in rows:
+            row = dict(r)
+            prefix = row["phash"][:4] if row["phash"] else "?"
+            if prefix not in clusters:
+                clusters[prefix] = []
+            clusters[prefix].append({
+                "scan_id": row["id"],
+                "timestamp": row["timestamp"],
+                "is_nsfw": bool(row["is_nsfw"]),
+                "confidence": row["confidence"],
+                "labels": json.loads(row["labels"]) if row["labels"] else [],
+                "source": row["source"],
+                "phash": row["phash"],
+            })
+
+        # Return clusters with 2+ items (= same content seen multiple times)
+        multi = [{"cluster_id": k, "count": len(v), "scans": v[:10]}
+                 for k, v in clusters.items() if len(v) >= 2]
+        multi.sort(key=lambda c: -c["count"])
+
+        # Also return singletons for the timeline
+        singles = [{"cluster_id": k, "count": 1, "scans": v[:1]}
+                   for k, v in clusters.items() if len(v) == 1]
+
+        return {
+            "clusters": multi[:limit],
+            "total_clusters": len(multi),
+            "total_unique": len(singles),
+            "total_scans": len(rows),
+        }
+    finally:
+        await db.close()
+
+
 async def get_scan_timeline(days: int = 30) -> list[dict]:
     """Hourly scan counts for timeline/heatmap visualization."""
     db = await get_db()

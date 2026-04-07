@@ -684,6 +684,20 @@ async def vector_search(
     }
 
 
+@app.get("/api/v1/stats/clusters")
+async def get_content_clusters(limit: int = Query(20, le=100), authorization: str = Header(None)):
+    """Content propagation clusters — same content seen multiple times."""
+    await require_token(authorization)
+    return await stats.get_content_clusters(limit)
+
+
+@app.get("/api/v1/scan/vector-stats")
+async def vector_stats(authorization: str = Header(None)):
+    """Vector store statistics — backend type, total vectors indexed."""
+    await require_token(authorization)
+    return _vector_store.stats()
+
+
 # ========== Text-to-Image Search ==========
 
 
