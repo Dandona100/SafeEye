@@ -488,9 +488,8 @@ async def require_master(authorization: str = Header(None)):
 @app.post("/api/v1/scan/file", response_model=ScanResponse)
 async def scan_file_endpoint(
     file: UploadFile = File(...),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
-    token_data = await require_token(authorization)
     check_rate_limit(token_data.get("name"))
 
     # Save upload to temp
@@ -535,9 +534,8 @@ async def scan_file_endpoint(
 @app.post("/api/v1/scan/url", response_model=ScanResponse)
 async def scan_url_endpoint(
     url: str = Query(...),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
-    token_data = await require_token(authorization)
     check_rate_limit(token_data.get("name"))
 
     # Download the URL to temp
@@ -616,10 +614,9 @@ async def scan_url_endpoint(
 async def find_similar_scans(
     phash: str = Query(..., description="Perceptual hash to search for"),
     threshold: int = Query(10, ge=0, le=64, description="Max Hamming distance (0=exact, 10=default)"),
-    authorization: str = Header(None),
+    _=Depends(require_token),
 ):
     """Find scans with similar perceptual hashes (hamming distance < threshold)."""
-    await require_token(authorization)
     if not phash or not all(c in "0123456789abcdef" for c in phash.lower()):
         raise HTTPException(400, "Invalid phash: must be a hex string")
     results = await database.find_similar_by_phash(phash.lower(), threshold=threshold)
@@ -630,10 +627,9 @@ async def find_similar_scans(
 async def vector_search(
     phash: str = Query(..., description="Perceptual hash (hex) to search for"),
     top_k: int = Query(10, ge=1, le=100, description="Number of most similar results to return"),
-    authorization: str = Header(None),
+    _=Depends(require_token),
 ):
     """Fast in-memory vector similarity search over pHash fingerprints."""
-    await require_token(authorization)
     if not phash or not all(c in "0123456789abcdef" for c in phash.lower()):
         raise HTTPException(400, "Invalid phash: must be a hex string")
     results = _vector_store.search(phash.lower(), top_k=top_k)
@@ -646,16 +642,14 @@ async def vector_search(
 
 
 @app.get("/api/v1/stats/clusters")
-async def get_content_clusters(limit: int = Query(20, le=100), authorization: str = Header(None)):
+async def get_content_clusters(limit: int = Query(20, le=100), _=Depends(require_token)):
     """Content propagation clusters — same content seen multiple times."""
-    await require_token(authorization)
     return await stats.get_content_clusters(limit)
 
 
 @app.get("/api/v1/scan/vector-stats")
-async def vector_stats(authorization: str = Header(None)):
+async def vector_stats(_=Depends(require_token)):
     """Vector store statistics — backend type, total vectors indexed."""
-    await require_token(authorization)
     return _vector_store.stats()
 
 
@@ -670,14 +664,13 @@ class _SearchRequest(BaseModel):
 @app.post("/api/v1/scan/search")
 async def search_scans_by_text(
     body: _SearchRequest,
-    authorization: str = Header(None),
+    _=Depends(require_token),
 ):
     """Search past scans by keyword matching against stored detection labels.
 
     Accepts a text query (e.g. "nudity", "weapons", "gore") and returns scans
     whose provider-assigned labels contain all query tokens.
     """
-    await require_token(authorization)
     query = body.query.strip()
     if not query:
         raise HTTPException(400, "Query must not be empty")
@@ -866,8 +859,7 @@ async def compare_endpoint(
 
 
 @app.get("/api/v1/scan/{scan_id}")
-async def get_scan_result(scan_id: str, authorization: str = Header(None)):
-    token_data = await require_token(authorization)
+async def get_scan_result(scan_id: str, token_data: dict = Depends(require_token)):
     # Multi-tenant isolation: non-master tokens only see their own scans
     requesting_token = None if _is_master(token_data) else token_data.get("name")
     scan = await database.get_scan(scan_id, requesting_token=requesting_token)
@@ -915,10 +907,9 @@ async def scan_async(
     file: UploadFile = File(None),
     url: str = Query(None),
     webhook_url: str = Query(None),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
     """Submit scan asynchronously. Returns job_id immediately."""
-    token_data = await require_token(authorization)
 
     if not file and not url:
         raise HTTPException(400, "Provide file or url")
@@ -963,10 +954,9 @@ async def scan_async(
 async def scan_batch(
     body: dict,
     background_tasks: BackgroundTasks,
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
     """Submit multiple URLs for scanning. Returns batch_id."""
-    token_data = await require_token(authorization)
 
     urls = body.get("urls", [])
     if not urls or len(urls) > 100:
@@ -1010,9 +1000,8 @@ async def scan_batch(
 
 
 @app.get("/api/v1/job/{job_id}")
-async def get_job_status(job_id: str, authorization: str = Header(None)):
+async def get_job_status(job_id: str, _=Depends(require_token)):
     """Poll job status and result."""
-    await require_token(authorization)
     job = await database.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
@@ -1028,9 +1017,8 @@ async def get_job_status(job_id: str, authorization: str = Header(None)):
 
 
 @app.get("/api/v1/batch/{batch_id}")
-async def get_batch_status(batch_id: str, authorization: str = Header(None)):
+async def get_batch_status(batch_id: str, _=Depends(require_token)):
     """Get batch progress and results."""
-    await require_token(authorization)
     jobs = await database.get_batch_jobs(batch_id)
     if not jobs:
         raise HTTPException(404, "Batch not found")
@@ -1063,10 +1051,9 @@ async def get_batch_status(batch_id: str, authorization: str = Header(None)):
 @app.post("/api/v1/stream/start")
 async def stream_start(
     body: dict,
-    authorization: str = Header(None),
+    _=Depends(require_master),
 ):
     """Start monitoring an RTMP/HLS live stream for NSFW content."""
-    await require_master(authorization)
 
     url = body.get("url")
     if not url:
@@ -1096,10 +1083,9 @@ async def stream_start(
 @app.post("/api/v1/stream/stop")
 async def stream_stop(
     body: dict,
-    authorization: str = Header(None),
+    _=Depends(require_master),
 ):
     """Stop monitoring a live stream."""
-    await require_master(authorization)
 
     url = body.get("url")
     if not url:
@@ -1113,9 +1099,8 @@ async def stream_stop(
 
 
 @app.get("/api/v1/stream/status")
-async def stream_status(authorization: str = Header(None)):
+async def stream_status(_=Depends(require_token)):
     """List all active stream monitors and their stats."""
-    await require_token(authorization)
     monitors = get_all_monitors()
     return {
         "active_monitors": len(monitors),
@@ -1142,23 +1127,20 @@ async def submit_feedback(
 # ========== Stats ==========
 
 @app.get("/api/v1/stats", response_model=StatsOverview)
-async def get_stats(authorization: str = Header(None)):
-    token_data = await require_token(authorization)
+async def get_stats(token_data: dict = Depends(require_token)):
     # Multi-tenant: non-master tokens only see their own stats
     requesting_token = None if _is_master(token_data) else token_data.get("name")
     return await stats.get_overview(requesting_token=requesting_token)
 
 
 @app.get("/api/v1/stats/providers", response_model=list[ProviderStats])
-async def get_provider_stats(authorization: str = Header(None)):
-    await require_token(authorization)
+async def get_provider_stats(_=Depends(require_token)):
     return await stats.get_provider_stats()
 
 
 @app.get("/api/v1/stats/tokens/{token_name}/usage")
-async def get_token_usage(token_name: str, authorization: str = Header(None)):
+async def get_token_usage(token_name: str, _=Depends(require_master)):
     """Detailed usage stats for a single API token. Master token required."""
-    await require_master(authorization)
     return await stats.get_token_usage(token_name)
 
 
@@ -1181,9 +1163,8 @@ async def get_history(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     nsfw_only: bool = Query(False),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
-    token_data = await require_token(authorization)
     # Multi-tenant: non-master tokens only see their own history
     requesting_token = None if _is_master(token_data) else token_data.get("name")
     return await stats.get_history(limit, offset, nsfw_only, requesting_token=requesting_token)
@@ -1192,10 +1173,9 @@ async def get_history(
 @app.get("/api/v1/stats/export")
 async def export_scan_history(
     format: str = Query("json", pattern="^(csv|json)$"),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
     """Export all scan history as CSV or JSON."""
-    token_data = await require_token(authorization)
 
     db = await database.get_db()
     try:
@@ -1258,8 +1238,7 @@ async def export_scan_history(
 # ========== Token Management ==========
 
 @app.post("/api/v1/admin/tokens", response_model=TokenCreated)
-async def create_token(body: TokenCreate, authorization: str = Header(None)):
-    await require_master(authorization)
+async def create_token(body: TokenCreate, _=Depends(require_master)):
     raw, hashed = auth.generate_token()
     expires_at = None
     if body.expires_in_days:
@@ -1270,8 +1249,7 @@ async def create_token(body: TokenCreate, authorization: str = Header(None)):
 
 
 @app.delete("/api/v1/admin/tokens/{name}")
-async def revoke_token(name: str, authorization: str = Header(None)):
-    await require_master(authorization)
+async def revoke_token(name: str, _=Depends(require_master)):
     deleted = await database.delete_token(name)
     if not deleted:
         raise HTTPException(404, "Token not found")
@@ -1280,9 +1258,8 @@ async def revoke_token(name: str, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/tokens/{name}/rotate")
-async def rotate_token(name: str, authorization: str = Header(None)):
+async def rotate_token(name: str, _=Depends(require_master)):
     """Rotate a token: create a new one, old stays valid for 24h grace period."""
-    await require_master(authorization)
     result = await database.rotate_token(name)
     if not result:
         raise HTTPException(404, "Token not found")
@@ -1297,8 +1274,7 @@ async def rotate_token(name: str, authorization: str = Header(None)):
 
 
 @app.get("/api/v1/admin/tokens", response_model=list[TokenInfo])
-async def list_tokens(authorization: str = Header(None)):
-    await require_master(authorization)
+async def list_tokens(_=Depends(require_master)):
     tokens = await database.list_tokens()
     return [TokenInfo(**t) for t in tokens]
 
@@ -1306,8 +1282,7 @@ async def list_tokens(authorization: str = Header(None)):
 # ========== Provider Config ==========
 
 @app.get("/api/v1/admin/providers")
-async def get_providers_config(authorization: str = Header(None)):
-    await require_master(authorization)
+async def get_providers_config(_=Depends(require_master)):
     from nsfw_scanner.scanner import _get_providers
     result = {}
     for p in _get_providers():
@@ -1327,8 +1302,7 @@ _PROVIDER_ENV_MAP = {
 
 
 @app.post("/api/v1/admin/providers")
-async def update_provider_config(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def update_provider_config(body: dict, _=Depends(require_master)):
     updated = []
     # Generic: body keys map to env vars
     env_updates = {
@@ -1349,8 +1323,7 @@ async def update_provider_config(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/providers/disconnect")
-async def disconnect_provider(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def disconnect_provider(body: dict, _=Depends(require_master)):
     provider_name = body.get("provider", "")
     env_vars = _PROVIDER_ENV_MAP.get(provider_name, [])
     for var in env_vars:
@@ -1361,16 +1334,14 @@ async def disconnect_provider(body: dict, authorization: str = Header(None)):
 
 
 @app.get("/api/v1/admin/providers/status")
-async def providers_status(authorization: str = Header(None)):
+async def providers_status(_=Depends(require_token)):
     """Get all providers with active/disabled/configured status."""
-    await require_token(authorization)
     from nsfw_scanner.scanner import get_all_providers_status
     return get_all_providers_status()
 
 
 @app.post("/api/v1/admin/providers/disable")
-async def disable_provider(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def disable_provider(body: dict, _=Depends(require_master)):
     name = body.get("provider", "")
     if not name:
         raise HTTPException(400, "provider required")
@@ -1383,8 +1354,7 @@ async def disable_provider(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/providers/enable")
-async def enable_provider(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def enable_provider(body: dict, _=Depends(require_master)):
     name = body.get("provider", "")
     if not name:
         raise HTTPException(400, "provider required")
@@ -1396,9 +1366,8 @@ async def enable_provider(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/providers/install")
-async def install_provider(body: dict, authorization: str = Header(None)):
+async def install_provider(body: dict, _=Depends(require_master)):
     """Install a local provider's pip dependencies."""
-    await require_master(authorization)
     name = body.get("provider", "")
     _INSTALL_MAP = {
         "marqo_nsfw": "timm torch",
@@ -1465,8 +1434,7 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 
 
 @app.post("/api/v1/report/bug")
-async def report_bug(body: dict, authorization: str = Header(None)):
-    await require_token(authorization)
+async def report_bug(body: dict, _=Depends(require_token)):
     title = body.get("title", "Bug Report")
     description = body.get("description", "")
     labels = body.get("labels", ["bug"])
@@ -1501,8 +1469,7 @@ async def report_bug(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/report/feature")
-async def request_feature(body: dict, authorization: str = Header(None)):
-    await require_token(authorization)
+async def request_feature(body: dict, _=Depends(require_token)):
     body["labels"] = ["enhancement"]
     return await report_bug(body, authorization)
 
@@ -1510,8 +1477,7 @@ async def request_feature(body: dict, authorization: str = Header(None)):
 # ========== Domain & DNS Setup ==========
 
 @app.get("/api/v1/admin/domain")
-async def get_domain_config(authorization: str = Header(None)):
-    await require_master(authorization)
+async def get_domain_config(_=Depends(require_master)):
     saved = await database.load_all_provider_config()
     return {
         "domain": saved.get("SAFEEYE_DOMAIN", ""),
@@ -1522,9 +1488,8 @@ async def get_domain_config(authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/domain/detect-dns")
-async def detect_dns(body: dict, authorization: str = Header(None)):
+async def detect_dns(body: dict, _=Depends(require_master)):
     """Detect DNS provider from domain NS records."""
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     if not domain:
         raise HTTPException(400, "Domain required")
@@ -1570,9 +1535,8 @@ async def detect_dns(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/domain/setup-dns")
-async def setup_dns_auto(body: dict, authorization: str = Header(None)):
+async def setup_dns_auto(body: dict, _=Depends(require_master)):
     """Auto-add DNS A record via Cloudflare API."""
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     cf_token = body.get("cloudflare_token", "").strip()
 
@@ -1642,12 +1606,11 @@ async def setup_dns_auto(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/domain/setup-direct")
-async def setup_direct(body: dict, authorization: str = Header(None)):
+async def setup_direct(body: dict, _=Depends(require_master)):
     """
     Direct domain setup — no nginx needed.
     Just DNS pointing to server IP + port. For VPS users without nginx.
     """
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     if not domain:
         raise HTTPException(400, "Domain required")
@@ -1667,9 +1630,8 @@ async def setup_direct(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/domain/setup-nginx")
-async def setup_nginx(body: dict, authorization: str = Header(None)):
+async def setup_nginx(body: dict, _=Depends(require_master)):
     """Run the nginx setup script for the domain."""
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     if not domain:
         raise HTTPException(400, "Domain required")
@@ -1746,9 +1708,8 @@ def _find_nginx_config(domain: str) -> dict:
 
 
 @app.post("/api/v1/admin/domain/detect-nginx")
-async def detect_nginx_config(body: dict, authorization: str = Header(None)):
+async def detect_nginx_config(body: dict, _=Depends(require_master)):
     """Step 1: Find nginx config file for a domain. User confirms or provides custom path."""
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     if not domain:
         raise HTTPException(400, "Domain required")
@@ -1761,9 +1722,8 @@ async def detect_nginx_config(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/domain/setup-path")
-async def setup_path_auto(body: dict, authorization: str = Header(None)):
+async def setup_path_auto(body: dict, _=Depends(require_master)):
     """Step 2: Add location block to a confirmed nginx config file."""
-    await require_master(authorization)
     domain = body.get("domain", "").strip()
     path_prefix = body.get("path", "").strip().strip("/")
     config_file = body.get("config_file", "").strip()  # User-confirmed or custom path
@@ -1860,13 +1820,12 @@ _pending_verifications: dict = {}
 
 
 @app.post("/api/v1/admin/telegram/start-verify")
-async def start_telegram_verify(body: dict, authorization: str = Header(None)):
+async def start_telegram_verify(body: dict, _=Depends(require_master)):
     """
     Start Telegram bot verification.
     User provides their Telegram bot token. We generate a code,
     send it via the bot, and wait for confirmation.
     """
-    await require_master(authorization)
     bot_token = body.get("bot_token", "").strip()
     if not bot_token:
         raise HTTPException(400, "bot_token required")
@@ -1901,9 +1860,8 @@ async def start_telegram_verify(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/admin/telegram/check-verify")
-async def check_telegram_verify(body: dict, authorization: str = Header(None)):
+async def check_telegram_verify(body: dict, _=Depends(require_master)):
     """Check if verification code was confirmed via Telegram."""
-    await require_master(authorization)
     code = body.get("code", "").strip()
 
     if code not in _pending_verifications:
@@ -1955,9 +1913,8 @@ async def check_telegram_verify(body: dict, authorization: str = Header(None)):
 
 
 @app.get("/api/v1/admin/telegram/status")
-async def telegram_status(authorization: str = Header(None)):
+async def telegram_status(_=Depends(require_master)):
     """Get Telegram bot verification status."""
-    await require_master(authorization)
     saved = await database.load_all_provider_config()
     return {
         "verified": saved.get("TELEGRAM_VERIFIED") == "true",
@@ -1987,10 +1944,9 @@ async def create_sandbox_token(authorization: str = Header(None)):
 @app.post("/api/v1/sandbox/scan")
 async def sandbox_scan(
     file: UploadFile = File(...),
-    authorization: str = Header(None),
+    token_data: dict = Depends(require_token),
 ):
     """Scan a file in sandbox mode — runs all providers but doesn't save results."""
-    token_data = await require_token(authorization)
 
     suffix = os.path.splitext(file.filename or "upload")[1] or ".jpg"
     tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=suffix, delete=False)
@@ -2069,15 +2025,13 @@ async def gossip_ws(ws: WebSocket):
 
 
 @app.get("/api/v1/gossip/status")
-async def gossip_status(authorization: str = Header(None)):
-    await require_token(authorization)
+async def gossip_status(_=Depends(require_token)):
     return gossip_node.get_status()
 
 
 @app.post("/api/v1/gossip/configure")
-async def gossip_configure(body: dict, authorization: str = Header(None)):
+async def gossip_configure(body: dict, _=Depends(require_master)):
     """Enable/disable P2P network. Zero-config — key auto-generated."""
-    await require_master(authorization)
     enabled = body.get("enabled", False)
 
     await database.save_provider_config("GOSSIP_ENABLED", "1" if enabled else "0")
@@ -2094,8 +2048,7 @@ async def gossip_configure(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/gossip/add-peer")
-async def gossip_add_peer(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def gossip_add_peer(body: dict, _=Depends(require_master)):
     url = body.get("url", "").strip()
     if not url:
         raise HTTPException(400, "url required")
@@ -2116,8 +2069,7 @@ async def gossip_add_peer(body: dict, authorization: str = Header(None)):
 
 
 @app.post("/api/v1/gossip/remove-peer")
-async def gossip_remove_peer(body: dict, authorization: str = Header(None)):
-    await require_master(authorization)
+async def gossip_remove_peer(body: dict, _=Depends(require_master)):
     url = body.get("url", "").strip()
     if url in gossip_node.peers:
         peer = gossip_node.peers.pop(url)
@@ -2176,9 +2128,8 @@ async def get_registry():
 _pairing_codes: dict[str, dict] = {}  # code -> {token, expires}
 
 @app.post("/api/v1/extension/pair/create")
-async def create_pairing_code(authorization: str = Header(None)):
+async def create_pairing_code(token_data: dict = Depends(require_token)):
     """Generate a 6-digit pairing code for the browser extension. Returns code valid for 5 min."""
-    token_data = await require_token(authorization)
     raw_token = authorization.removeprefix("Bearer ").strip()
     code = f"{_secrets.randbelow(900000) + 100000}"
     _pairing_codes[code] = {"token": raw_token, "expires": _time.time() + 300}
@@ -2359,9 +2310,8 @@ async def subscribe_metadata(body: dict, _=Depends(require_master)):
 
 
 @app.get("/api/v1/metadata/check/{phash}")
-async def check_hash(phash: str, authorization: str = Header(None)):
+async def check_hash(phash: str, _=Depends(require_token)):
     """Quick check: does this pHash exist in our database?"""
-    await require_token(authorization)
     similar = await database.find_similar_by_phash(phash, threshold=3, limit=1)
     if similar:
         hit = similar[0]
@@ -2483,18 +2433,16 @@ def _run_deploy():
 
 
 @app.post("/api/v1/admin/deploy")
-async def trigger_deploy(authorization: str = Header(None)):
+async def trigger_deploy(_=Depends(require_master)):
     """Trigger auto-deploy: git pull + rebuild."""
-    await require_master(authorization)
     import threading
     threading.Thread(target=_run_deploy, daemon=True).start()
     return {"status": "deploying", "log": "/tmp/safeeye_deploy.log"}
 
 
 @app.get("/api/v1/admin/deploy/status")
-async def deploy_status(authorization: str = Header(None)):
+async def deploy_status(_=Depends(require_master)):
     """Check deploy log."""
-    await require_master(authorization)
     try:
         with open("/tmp/safeeye_deploy.log") as f:
             lines = f.readlines()
@@ -2550,9 +2498,8 @@ async def track_analytics(request: Request, call_next):
 
 
 @app.get("/api/v1/admin/analytics")
-async def get_analytics(authorization: str = Header(None)):
+async def get_analytics(_=Depends(require_master)):
     """Usage analytics: page views, API calls, GitHub stats."""
-    await require_master(authorization)
 
     # GitHub stats (stars, forks, downloads)
     gh_stats = {}
@@ -2738,9 +2685,8 @@ async def health():
 
 
 @app.get("/api/v1/admin/check-update")
-async def check_update(authorization: str = Header(None)):
+async def check_update(_=Depends(require_master)):
     """Check if a newer version is available on GitHub."""
-    await require_master(authorization)
     import subprocess
     try:
         # Get latest release tag from GitHub
@@ -2785,9 +2731,8 @@ async def check_update(authorization: str = Header(None)):
 
 
 @app.get("/api/v1/server-info")
-async def server_info(authorization: str = Header(None)):
+async def server_info(_=Depends(require_token)):
     """Protected endpoint — returns server user, IP, port for SSH instructions."""
-    await require_token(authorization)
     import subprocess
     user = os.environ.get("USER", os.environ.get("LOGNAME", subprocess.getoutput("whoami").strip() or "user"))
     ip = subprocess.getoutput("curl -s https://api.ipify.org 2>/dev/null || echo YOUR_SERVER_IP").strip()
