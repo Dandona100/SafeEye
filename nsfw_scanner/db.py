@@ -224,15 +224,7 @@ async def get_scan(scan_id: str, requesting_token: str = None) -> dict | None:
         await db.close()
 
 
-def _hamming_distance(hash1: str, hash2: str) -> int:
-    """Compute Hamming distance between two hex hash strings."""
-    try:
-        val1 = int(hash1, 16)
-        val2 = int(hash2, 16)
-        xor = val1 ^ val2
-        return bin(xor).count('1')
-    except (ValueError, TypeError):
-        return 999
+from nsfw_scanner.scanner import hamming_distance as _hamming_distance
 
 
 async def find_similar_by_phash(phash: str, threshold: int = 10, limit: int = 50) -> list[dict]:

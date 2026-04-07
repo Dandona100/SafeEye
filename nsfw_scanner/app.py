@@ -82,6 +82,24 @@ def _record_scan_metrics(result):
         if pr.error:
             _metrics["provider_errors"][pr.provider] = _metrics["provider_errors"].get(pr.provider, 0) + 1
 
+async def _post_scan(result, file_type: str, token_name: str = None):
+    """Shared post-scan logic: metrics, persist, vector store, gossip, alerts."""
+    _record_scan_metrics(result)
+    await database.insert_scan(result.scan_id, file_type, result.model_dump(), token_name)
+    if result.phash:
+        _vector_store.add(result.scan_id, result.phash)
+        asyncio.create_task(gossip_node.broadcast_hash({
+            "p": result.phash, "n": int(result.is_nsfw),
+            "c": round(result.confidence, 2), "l": result.labels,
+        }))
+    if result.is_nsfw:
+        await _send_telegram_alert(result.labels, result.confidence)
+        asyncio.create_task(_send_email_alert(
+            "SafeEyes NSFW Alert",
+            f"NSFW detected!\nLabels: {', '.join(result.labels)}\nConfidence: {round(result.confidence * 100)}%\nScan ID: {result.scan_id}",
+        ))
+
+
 # ========== File size limit ==========
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
 
@@ -498,32 +516,8 @@ async def scan_file_endpoint(
             async with _scan_semaphore:
                 result = await scan_file(tmp.name)
 
-        # Update Prometheus metrics
-        _record_scan_metrics(result)
-
-        # Persist to DB
-        await database.insert_scan(
-            result.scan_id,
-            "image" if suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"} else "video",
-            result.model_dump(),
-            token_data.get("name"),
-        )
-
-        # Add to in-memory vector store + gossip broadcast
-        if result.phash:
-            _vector_store.add(result.scan_id, result.phash)
-            asyncio.create_task(gossip_node.broadcast_hash({
-                "p": result.phash, "n": int(result.is_nsfw),
-                "c": round(result.confidence, 2), "l": result.labels,
-            }))
-
-        # Alerts for NSFW
-        if result.is_nsfw:
-            await _send_telegram_alert(result.labels, result.confidence)
-            asyncio.create_task(_send_email_alert(
-                "SafeEyes NSFW Alert",
-                f"NSFW detected!\nLabels: {', '.join(result.labels)}\nConfidence: {round(result.confidence * 100)}%\nScan ID: {result.scan_id}",
-            ))
+        file_type = "image" if suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".gif"} else "video"
+        await _post_scan(result, file_type, token_data.get("name"))
 
         return ScanResponse(
             scan_id=result.scan_id,
@@ -608,31 +602,8 @@ async def scan_url_endpoint(
             async with _scan_semaphore:
                 result = await scan_file(tmp.name)
 
-        # Update Prometheus metrics
-        _record_scan_metrics(result)
-
-        await database.insert_scan(
-            result.scan_id,
-            "image" if ext in {".jpg", ".png", ".webp"} else "video",
-            result.model_dump(),
-            token_data.get("name"),
-        )
-
-        # Add to in-memory vector store + gossip broadcast
-        if result.phash:
-            _vector_store.add(result.scan_id, result.phash)
-            asyncio.create_task(gossip_node.broadcast_hash({
-                "p": result.phash, "n": int(result.is_nsfw),
-                "c": round(result.confidence, 2), "l": result.labels,
-            }))
-
-        # Alerts for NSFW
-        if result.is_nsfw:
-            await _send_telegram_alert(result.labels, result.confidence)
-            asyncio.create_task(_send_email_alert(
-                "SafeEyes NSFW Alert",
-                f"NSFW detected!\nLabels: {', '.join(result.labels)}\nConfidence: {round(result.confidence * 100)}%\nScan ID: {result.scan_id}",
-            ))
+        file_type = "image" if ext in {".jpg", ".png", ".webp", ".jpeg", ".gif"} else "video"
+        await _post_scan(result, file_type, token_data.get("name"))
 
         return ScanResponse(
             scan_id=result.scan_id,
@@ -719,15 +690,7 @@ async def search_scans_by_text(
 
 # ========== Delta Detection ==========
 
-def _hamming_distance(h1: str, h2: str) -> int:
-    """Compute the Hamming distance between two hex hash strings."""
-    if len(h1) != len(h2):
-        # Pad the shorter one with zeros
-        max_len = max(len(h1), len(h2))
-        h1 = h1.zfill(max_len)
-        h2 = h2.zfill(max_len)
-    val = int(h1, 16) ^ int(h2, 16)
-    return bin(val).count("1")
+from nsfw_scanner.scanner import hamming_distance as _hamming_distance
 
 
 def _compare_images(path1: str, path2: str) -> dict:

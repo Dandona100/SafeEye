@@ -73,6 +73,14 @@ def compute_phash(file_path: str, hash_size: int = 8) -> str | None:
         return None
 
 
+def hamming_distance(hash1: str, hash2: str) -> int:
+    """Compute Hamming distance between two hex hash strings."""
+    try:
+        xor = int(hash1, 16) ^ int(hash2, 16)
+        return bin(xor).count('1')
+    except (ValueError, TypeError):
+        return 999
+
 
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".heic", ".heif"}
 _VIDEO_EXT = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".3gp", ".m4v"}
