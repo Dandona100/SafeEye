@@ -306,12 +306,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"NudeNet preload failed: {e}")
 
-    try:
-        from nsfw_scanner.providers.marqo_nsfw_provider import _get_model
-        _get_model()
-        logger.info("Marqo NSFW model preloaded")
-    except Exception as e:
-        logger.debug(f"Marqo NSFW preload skipped: {e}")
+    # Marqo/other torch models load lazily on first scan (download from HuggingFace)
 
     logger.info(f"Active providers: {get_active_providers()}")
 
@@ -1450,10 +1445,20 @@ async def install_provider(body: dict, authorization: str = Header(None)):
         raise HTTPException(400, f"Unknown provider or no install needed: {name}")
     import subprocess
     try:
+        # Install torch + torchvision CPU-only first if needed
+        pkg_list = packages.split()
+        if "torch" in pkg_list:
+            pkg_list.remove("torch")
+            torch_result = subprocess.run(
+                ["pip", "install", "--no-cache-dir", "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cpu"],
+                capture_output=True, text=True, timeout=600,
+            )
+            if torch_result.returncode != 0:
+                return {"status": "error", "output": f"torch install failed: {torch_result.stderr[-500:]}"}
         result = subprocess.run(
-            ["pip", "install", "--no-cache-dir"] + packages.split(),
+            ["pip", "install", "--no-cache-dir"] + pkg_list,
             capture_output=True, text=True, timeout=300,
-        )
+        ) if pkg_list else type('', (), {'returncode': 0, 'stdout': 'torch only', 'stderr': ''})()
         if result.returncode != 0:
             return {"status": "error", "output": result.stderr[-500:]}
         # Force re-check of providers — clear failed import cache

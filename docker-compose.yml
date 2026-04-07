@@ -16,6 +16,7 @@ services:
       - ./nsfw_scanner/static:/app/nsfw_scanner/static
       - ./nsfw_scanner:/app/nsfw_scanner
       - ./.git:/app/.git
+      - pip_cache:/usr/local/lib/python3.11/site-packages
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       resources:
@@ -28,3 +29,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+volumes:
+  pip_cache:
