@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -7,32 +7,51 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        run: ruff check nsfw_scanner/ --select E,F,W --ignore E501,E402,F401,W503
 
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest requests
-
+        run: pip install -r requirements.txt && pip install pytest requests
       - name: Run tests
-        run: pytest nsfw_scanner/tests/ -v
+        run: pytest nsfw_scanner/tests/ -v --tb=short
+      - name: Test summary
+        if: always()
+        run: pytest nsfw_scanner/tests/ -q --tb=no 2>/dev/null || true
 
   docker:
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - uses: actions/checkout@v4
-
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ hashFiles('Dockerfile', 'requirements.txt') }}
       - name: Build Docker image
-        run: docker build -t safeeye .
-
+        run: docker build -t safeeyes .
       - name: Health check
         run: |
           echo "SCAN_API_MASTER_TOKEN=test123" > .env
@@ -42,4 +61,42 @@ jobs:
             curl -sf http://localhost:1985/health && break || echo "Waiting... ($i)"
           done
           curl -f http://localhost:1985/health
-          docker compose down
+      - name: Check providers
+        run: |
+          curl -sf http://localhost:1985/health | python3 -c "
+          import sys,json
+          d=json.load(sys.stdin)
+          active=[k for k,v in d['providers'].items() if v=='ok']
+          print(f'Active providers: {len(active)} — {active}')
+          assert len(active) >= 2, f'Expected >= 2 active providers, got {len(active)}'
+          "
+      - name: Scan test
+        run: |
+          TOKEN=test123
+          # Create a test image
+          python3 -c "from PIL import Image; Image.new('RGB',(100,100),'red').save('/tmp/test.jpg')"
+          # Scan it
+          curl -sf -X POST -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/test.jpg" http://localhost:1985/api/v1/scan/file | python3 -c "
+          import sys,json
+          d=json.load(sys.stdin)
+          print(f'Scan result: {\"NSFW\" if d[\"result\"][\"is_nsfw\"] else \"Safe\"} — confidence: {d[\"result\"][\"confidence\"]}')
+          assert 'scan_id' in d, 'Missing scan_id'
+          "
+      - name: Cleanup
+        if: always()
+        run: docker compose down
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Trigger deploy webhook
+        run: |
+          if [ -n "${{ secrets.DEPLOY_WEBHOOK_URL }}" ]; then
+            curl -sf -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{"ref":"refs/heads/main"}' || echo "Deploy webhook failed (non-critical)"
+          else
+            echo "No DEPLOY_WEBHOOK_URL secret set — skipping deploy"
+          fi
