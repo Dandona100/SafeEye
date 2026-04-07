@@ -447,6 +447,10 @@ if not os.environ.get("BEHIND_NGINX"):
         allow_headers=["*"],
     )
 
+# Include route modules
+from nsfw_scanner.routes.community import router as community_router
+app.include_router(community_router)
+
 # ========== Concurrent Scan Limit ==========
 MAX_CONCURRENT_SCANS = int(os.environ.get("MAX_CONCURRENT_SCANS", "10"))
 _scan_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCANS)
@@ -1965,49 +1969,6 @@ async def sandbox_scan(
         }
     finally:
         os.unlink(tmp.name)
-
-
-# ========== Community (public, UUID-tracked) ==========
-
-import uuid as _uuid
-
-@app.get("/api/v1/community")
-async def list_community(type: str = Query(None), sort: str = Query("votes"), limit: int = Query(50)):
-    return await database.list_community_reports(type, sort, limit)
-
-
-@app.post("/api/v1/community")
-async def create_community_report(body: dict):
-    title = body.get("title", "").strip()
-    if not title:
-        raise HTTPException(400, "Title required")
-    report_id = _uuid.uuid4().hex[:12]
-    return await database.insert_community_report(
-        report_id,
-        body.get("type", "feature"),
-        title,
-        body.get("description", ""),
-        body.get("device_uuid", "anonymous"),
-    )
-
-
-@app.get("/api/v1/community/{report_id}")
-async def get_community_report(report_id: str):
-    report = await database.get_community_report(report_id)
-    if not report:
-        raise HTTPException(404, "Report not found")
-    return report
-
-
-@app.post("/api/v1/community/{report_id}/vote")
-async def vote_community(report_id: str, body: dict):
-    device_uuid = body.get("device_uuid", "")
-    if not device_uuid:
-        raise HTTPException(400, "device_uuid required")
-    report = await database.get_community_report(report_id)
-    if not report:
-        raise HTTPException(404, "Report not found")
-    return await database.vote_community_report(report_id, device_uuid)
 
 
 # ========== Gossip P2P ==========
