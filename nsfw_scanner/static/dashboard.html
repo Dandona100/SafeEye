@@ -2485,8 +2485,6 @@ function NetworkTab({ api, i18n }) {
     const he = i18n.lang === 'he';
     const [status, setStatus] = useState(null);
     const [netStats, setNetStats] = useState(null);
-    const [newPeer, setNewPeer] = useState('');
-    const [secret, setSecret] = useState('');
     const [msg, setMsg] = useState('');
 
     const reload = () => {
@@ -2497,27 +2495,10 @@ function NetworkTab({ api, i18n }) {
 
     const toggle = async () => {
         const enabled = !status?.enabled;
-        const sec = secret || status?.shared_secret || '';
-        if (enabled && !sec) { setMsg(he ? 'נדרש סוד משותף' : 'Shared secret required'); return; }
-        await api.postApi('/api/v1/gossip/configure', {
-            enabled, secret: sec,
-            peers: (status?.peers || []).map(p => p.url),
-        });
+        await api.postApi('/api/v1/gossip/configure', { enabled });
         reload();
         setMsg(enabled ? '✅' : '⏸️');
         setTimeout(() => setMsg(''), 2000);
-    };
-
-    const addPeer = async () => {
-        if (!newPeer.trim()) return;
-        await api.postApi('/api/v1/gossip/add-peer', { url: newPeer.trim() });
-        setNewPeer('');
-        reload();
-    };
-
-    const removePeer = async (url) => {
-        await api.postApi('/api/v1/gossip/remove-peer', { url });
-        reload();
     };
 
     if (!status) return <SkeletonLoader type="cards" count={3} />;
@@ -2526,69 +2507,47 @@ function NetworkTab({ api, i18n }) {
         <div className="space-y-6">
             <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
                 <div className="text-3xl mb-2">🌍</div>
-                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'רשת P2P' : 'P2P Network'}</h3>
-                <p className="text-muted text-sm mt-1">{he ? 'שיתוף מטא-דאטה אנונימי בין שרתי SafeEyes' : 'Anonymous metadata sharing between SafeEyes servers'}</p>
+                <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'רשת SafeEyes' : 'SafeEyes Network'}</h3>
+                <p className="text-muted text-sm mt-1">{he ? 'שרתים ברחבי העולם משתפים מטא-דאטה אנונימית' : 'Servers worldwide sharing anonymous metadata'}</p>
             </div>
 
             {msg && <div className="text-center text-lg">{msg}</div>}
 
-            {/* Network stats */}
-            {netStats && (
-                <div className="grid grid-cols-3 gap-3">
-                    <div className="card p-4 text-center">
-                        <div className="text-2xl font-bold text-ink">{netStats.active_servers}</div>
-                        <div className="text-xs text-muted">{he ? 'שרתים פעילים' : 'Active Servers'}</div>
-                    </div>
-                    <div className="card p-4 text-center">
-                        <div className="text-2xl font-bold text-ink">{netStats.total_scans_network}</div>
-                        <div className="text-xs text-muted">{he ? 'סריקות ברשת' : 'Network Scans'}</div>
-                    </div>
-                    <div className="card p-4 text-center">
-                        <div className="text-2xl font-bold text-ink">{netStats.top_provider || '—'}</div>
-                        <div className="text-xs text-muted">{he ? 'ספק פופולרי' : 'Top Provider'}</div>
-                    </div>
-                </div>
-            )}
-
-            {/* Enable/Disable */}
+            {/* Toggle — zero config */}
             <div className="card p-6">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between">
                     <div>
-                        <h4 className="font-bold text-ink">{he ? 'שיתוף מטא-דאטה' : 'Metadata Sharing'}</h4>
-                        <p className="text-muted text-xs">{he ? 'opt-in בלבד. מזהה אנונימי, מתחלף כל restart.' : 'Opt-in only. Anonymous ID, rotated on restart.'}</p>
-                        <p className="text-muted/60 text-xs mt-1" dir="ltr">Server ID: {status.server_id}</p>
+                        <h4 className="font-bold text-ink">{he ? 'הצטרף לרשת' : 'Join Network'}</h4>
+                        <p className="text-muted text-xs">{he ? 'לחץ להפעלה — הכל אוטומטי, בלי הגדרות.' : 'Click to enable — fully automatic, zero config.'}</p>
+                        {status.enabled && <p className="text-muted/60 text-xs mt-1" dir="ltr">Server ID: {status.server_id}</p>}
                     </div>
                     <button onClick={toggle} className="btn" style={{ background: status.enabled ? '#C9A962' : '#F0EDE8', color: status.enabled ? '#fff' : '#7A7A7A' }}>
-                        {status.enabled ? (he ? '✅ פעיל' : '✅ Active') : (he ? 'הפעל' : 'Enable')}
+                        {status.enabled ? (he ? '✅ מחובר' : '✅ Connected') : (he ? 'הצטרף' : 'Join')}
                     </button>
                 </div>
-                {!status.enabled && (
-                    <div className="space-y-2">
-                        <input className="input w-full" type="password" placeholder={he ? 'סוד משותף (pairing secret)' : 'Shared secret (pairing)'} value={secret} onChange={e => setSecret(e.target.value)} dir="ltr" />
-                        <p className="text-muted/60 text-xs">{he ? 'כל הצדדים חייבים להשתמש באותו סוד.' : 'All peers must use the same secret.'}</p>
-                    </div>
-                )}
             </div>
 
-            {/* Peers */}
+            {/* Active servers worldwide */}
             <div className="card p-6">
-                <h4 className="font-bold text-ink mb-3" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'Peers' : 'Peers'} ({status.peers_connected}/{status.peers_total})</h4>
-                <div className="space-y-2 mb-3">
-                    {status.peers.map(p => (
-                        <div key={p.url} className="flex items-center justify-between p-3 bg-warm rounded">
-                            <div className="flex items-center gap-2">
-                                <span className={`status-dot ${p.connected ? 'active' : 'inactive'}`}></span>
-                                <span className="text-xs font-mono text-ink" dir="ltr">{p.url}</span>
+                <h4 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'שרתים פעילים' : 'Active Servers'}</h4>
+                <div className="text-center mb-4">
+                    <div className="text-5xl font-bold" style={{ fontFamily: 'Playfair Display, serif', color: '#C9A962' }}>{netStats?.active_servers || 0}</div>
+                    <div className="text-muted text-sm mt-1">{he ? 'שרתים ברשת' : 'servers online'}</div>
+                </div>
+                {netStats?.servers?.length > 0 && (
+                    <div className="space-y-1">
+                        {netStats.servers.map((s, i) => (
+                            <div key={i} className="flex items-center gap-2 p-2 bg-warm rounded text-xs">
+                                <span className="status-dot active"></span>
+                                <span className="font-mono text-ink" dir="ltr">{s.server_id}</span>
+                                {s.server_id === status.server_id && <span className="text-gold-dark">{he ? '(אתה)' : '(you)'}</span>}
                             </div>
-                            <button onClick={() => removePeer(p.url)} className="text-xs text-red-600 hover:text-red-800">✕</button>
-                        </div>
-                    ))}
-                    {status.peers.length === 0 && <p className="text-muted text-xs">{he ? 'אין peers מחוברים' : 'No peers configured'}</p>}
-                </div>
-                <div className="flex gap-2">
-                    <input className="input flex-1" placeholder="ws://server:1985/api/v1/gossip/ws" value={newPeer} onChange={e => setNewPeer(e.target.value)} dir="ltr" />
-                    <button className="btn btn-green" onClick={addPeer}>{he ? 'הוסף' : 'Add'}</button>
-                </div>
+                        ))}
+                    </div>
+                )}
+                {(!netStats?.servers || netStats.servers.length === 0) && (
+                    <p className="text-muted text-xs text-center">{he ? 'הפעל את הרשת כדי לראות שרתים' : 'Enable network to see servers'}</p>
+                )}
             </div>
         </div>
     );

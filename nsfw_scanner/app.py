@@ -328,15 +328,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Vector store preload failed: {e}")
 
-    # Start Gossip P2P
+    # Start P2P Network (zero-config)
     gossip_enabled = saved_config.get("GOSSIP_ENABLED", "0") == "1"
-    gossip_secret = saved_config.get("GOSSIP_SECRET", "")
-    gossip_peers = [p for p in saved_config.get("GOSSIP_PEERS", "").split(",") if p.strip()]
-    if gossip_enabled and gossip_secret:
-        gossip_node.configure(True, gossip_secret, gossip_peers)
+    server_id = saved_config.get("GOSSIP_SERVER_ID", "")
+    server_key = saved_config.get("GOSSIP_SERVER_KEY", "")
+    if gossip_enabled:
+        gossip_node.configure(True, server_id, server_key)
         gossip_node.on_hash(lambda rec: database.import_hash_metadata([rec], "gossip"))
+        # Save generated ID/key if new
+        if gossip_node.server_id != server_id:
+            await database.save_provider_config("GOSSIP_SERVER_ID", gossip_node.server_id)
+        if gossip_node.server_key != server_key:
+            await database.save_provider_config("GOSSIP_SERVER_KEY", gossip_node.server_key)
         await gossip_node.start()
-        logger.info(f"Gossip P2P started with {len(gossip_peers)} peers")
+        logger.info(f"P2P Network started — server_id={gossip_node.server_id}")
 
     # Start periodic cleanup task
     import asyncio
@@ -2117,23 +2122,18 @@ async def gossip_status(authorization: str = Header(None)):
 
 @app.post("/api/v1/gossip/configure")
 async def gossip_configure(body: dict, authorization: str = Header(None)):
-    """Configure gossip P2P. Master token required."""
+    """Enable/disable P2P network. Zero-config — key auto-generated."""
     await require_master(authorization)
     enabled = body.get("enabled", False)
-    secret = body.get("secret", "")
-    peers = body.get("peers", [])
 
     await database.save_provider_config("GOSSIP_ENABLED", "1" if enabled else "0")
-    if secret:
-        await database.save_provider_config("GOSSIP_SECRET", secret)
-    if peers is not None:
-        await database.save_provider_config("GOSSIP_PEERS", ",".join(peers))
 
-    # Restart gossip
     await gossip_node.stop()
-    if enabled and secret:
-        gossip_node.configure(True, secret, peers)
+    if enabled:
+        gossip_node.configure(True)
         gossip_node.on_hash(lambda rec: database.import_hash_metadata([rec], "gossip"))
+        await database.save_provider_config("GOSSIP_SERVER_ID", gossip_node.server_id)
+        await database.save_provider_config("GOSSIP_SERVER_KEY", gossip_node.server_key)
         await gossip_node.start()
 
     return {"status": "ok", "gossip": gossip_node.get_status()}
@@ -2180,13 +2180,41 @@ async def gossip_remove_peer(body: dict, authorization: str = Header(None)):
 
 @app.get("/api/v1/network/stats")
 async def network_stats():
-    """Anonymous network stats — no auth required."""
-    connected = sum(1 for p in gossip_node.peers.values() if p.connected)
+    """Network stats — no auth required."""
+    status = gossip_node.get_status()
     return {
-        "active_servers": connected + (1 if gossip_node.enabled else 0),
-        "total_scans_network": gossip_node.network_stats.get("total_scans_network", 0),
-        "top_provider": gossip_node.network_stats.get("top_provider", ""),
+        "active_servers": status["network_count"] + (1 if status["enabled"] else 0),
+        "servers": status["network_servers"],
+        "this_server": status["server_id"] if status["enabled"] else None,
     }
+
+
+# Registry: other servers register here, we maintain the list
+_registered_servers: dict[str, dict] = {}  # server_id -> {last_seen, signature}
+
+@app.post("/api/v1/network/register")
+async def register_server(body: dict):
+    """Servers ping this to register. No auth — just server_id + signature."""
+    sid = body.get("server_id", "")
+    sig = body.get("signature", "")
+    if not sid or not sig:
+        raise HTTPException(400, "server_id and signature required")
+    _registered_servers[sid] = {"last_seen": _time_mod.time(), "signature": sig}
+    # Clean old entries (not seen in 15 min)
+    cutoff = _time_mod.time() - 900
+    for k in list(_registered_servers):
+        if _registered_servers[k]["last_seen"] < cutoff:
+            del _registered_servers[k]
+    return {"status": "ok", "active": len(_registered_servers)}
+
+
+@app.get("/api/v1/network/registry")
+async def get_registry():
+    """Get list of active servers. No auth."""
+    cutoff = _time_mod.time() - 900
+    active = [{"server_id": k, "last_seen": int(v["last_seen"])}
+              for k, v in _registered_servers.items() if v["last_seen"] >= cutoff]
+    return {"servers": active, "count": len(active)}
 
 
 # ========== Extension Pairing ==========

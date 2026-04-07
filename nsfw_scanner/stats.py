@@ -50,7 +50,7 @@ async def get_overview(requesting_token: str = None) -> StatsOverview:
         blocklist_size = 0
         try:
             import os
-            for p in ["/app/services/nsfw_domains.txt", "/app/data/nsfw_domains.txt"]:
+            for p in ["/app/nsfw_domains.txt", "/app/services/nsfw_domains.txt", "/app/data/nsfw_domains.txt", "nsfw_domains.txt"]:
                 if os.path.exists(p):
                     with open(p) as f:
                         blocklist_size = sum(1 for l in f if l.strip() and not l.startswith("#"))
