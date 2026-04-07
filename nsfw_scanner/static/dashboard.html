@@ -124,7 +124,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 const API = window.location.origin;
-const VERSION = "6.1.0";
+const VERSION = "6.2.0";
 const METADATA_API = 'https://lhflow.com:1985';
 
 // ========== Client-side pHash (dHash) ==========
@@ -757,8 +757,8 @@ function D3Analytics({ api, i18n, data }) {
         const days = Object.entries(dayMap).sort((a,b) => a[0].localeCompare(b[0])).slice(-7);
         if (!days.length) return;
 
-        const margin = {top: 4, right: 4, bottom: 16, left: 4};
-        const w = 200, h = 80;
+        const margin = {top: 10, right: 4, bottom: 16, left: 4};
+        const w = 200, h = 90;
         const maxCount = Math.max(1, ...days.map(d => d[1]));
         const barW = (w - margin.left - margin.right) / days.length - 2;
 
@@ -775,9 +775,10 @@ function D3Analytics({ api, i18n, data }) {
                 .attr('rx', 2).attr('fill', '#C9A962')
                 .transition().duration(400).delay(i * 60)
                 .attr('y', chartH - barH).attr('height', barH);
-            // Count on top
-            g.append('text').attr('x', x + barW/2).attr('y', chartH - barH - 2)
-                .attr('text-anchor', 'middle').style('font-size', '7px').style('fill', 'currentColor')
+            // Count inside bar (or just above if bar is tiny)
+            const textY = barH > 12 ? chartH - barH + 8 : chartH - barH - 3;
+            g.append('text').attr('x', x + barW/2).attr('y', Math.max(textY, 6))
+                .attr('text-anchor', 'middle').style('font-size', '7px').style('fill', barH > 12 ? '#fff' : 'currentColor')
                 .text(count).attr('opacity', 0).transition().delay(i * 60 + 300).attr('opacity', 1);
             // Day label
             g.append('text').attr('x', x + barW/2).attr('y', chartH + 10)
@@ -1040,6 +1041,7 @@ function ProvidersTab({ api, i18n, onNavigate }) {
                 <div className="text-4xl mb-2">📡</div>
                 <div className="text-2xl font-bold text-ink">{active.length} / {status.length}</div>
                 <p className="text-muted text-sm">{he ? 'ספקים פעילים' : 'Active Providers'}</p>
+                <p className="text-muted text-xs mt-1">{he ? 'לחצו על ספק פעיל לצפייה בסטטיסטיקות. התקינו ספקים נוספים מטאב חיבורים.' : 'Click an active provider for stats. Install more from the Integrations tab.'}</p>
             </div>
 
             {/* Chart */}
@@ -1151,6 +1153,10 @@ function HistoryTab({ api, i18n }) {
 
     return (
         <div className="space-y-6">
+            <div className="card p-4 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
+                <h3 className="font-bold text-ink text-sm" style={{ fontFamily: 'Playfair Display, serif' }}>📋 {he ? 'היסטוריית סריקות' : 'Scan History'}</h3>
+                <p className="text-muted text-xs mt-1">{he ? 'כל הסריקות שבוצעו — לחצו על שורה לפרטים מלאים' : 'All scans performed — click a row for full details'}</p>
+            </div>
             {/* Filter buttons */}
             <div className="card p-4 flex items-center gap-3">
                 <span className="text-muted text-sm">{he ? 'סינון:' : 'Filter:'}</span>
@@ -1298,7 +1304,8 @@ function TokensTab({ api, i18n }) {
     return (
         <div className="space-y-6">
             <div className="card p-6" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
-                <h3 className="font-bold text-ink mb-4" style={{ fontFamily: 'Playfair Display, serif' }}>🔑 {i18n.t('create_token')}</h3>
+                <h3 className="font-bold text-ink mb-1" style={{ fontFamily: 'Playfair Display, serif' }}>🔑 {i18n.t('create_token')}</h3>
+                <p className="text-muted text-xs mb-4">{i18n.lang === 'he' ? 'צרו טוקנים לכל שירות — כל טוקן רואה רק את הסריקות שלו. לחצו "שימוש" לצפייה בנתוני שימוש.' : 'Create tokens per service — each token only sees its own scans. Click "Usage" for detailed stats.'}</p>
                 <div className="flex gap-3">
                     <input className="input flex-1" value={name} onChange={e => setName(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && create()} placeholder={i18n.t('token_name')} />
@@ -2494,7 +2501,7 @@ function CommandCenter({ api, i18n }) {
             <div className="card p-6 text-center" style={{ background: 'linear-gradient(135deg, #FAF9F7 0%, #F0EDE8 100%)' }}>
                 <div className="text-3xl mb-2">🗺️</div>
                 <h3 className="font-bold text-ink" style={{ fontFamily: 'Playfair Display, serif' }}>{he ? 'מרכז פיקוד' : 'Command Center'}</h3>
-                <p className="text-muted text-sm mt-1">{he ? 'מפת התפשטות תוכן — אשכולות, דמיון, מגמות' : 'Content propagation map — clusters, similarity, trends'}</p>
+                <p className="text-muted text-sm mt-1">{he ? 'תוכן חוזר, אשכולות דמיון ומגמות' : 'Recurring content, similarity clusters & trends'}</p>
             </div>
 
             {/* Key metrics */}
@@ -2538,7 +2545,7 @@ function CommandCenter({ api, i18n }) {
                                 <div className="flex gap-1 flex-wrap">
                                     {c.scans.map((s, j) => (
                                         <div key={j} className="text-xs px-2 py-1 rounded bg-white/50" title={`${s.scan_id} — ${s.timestamp}`}>
-                                            <span className="text-muted/60">{new Date(s.timestamp).toLocaleDateString()}</span>
+                                            <span className="text-muted/60" dir="ltr">{new Date(s.timestamp).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'})}</span>
                                             {s.source !== 'api' && <span className="text-gold-dark ml-1">({s.source})</span>}
                                         </div>
                                     ))}

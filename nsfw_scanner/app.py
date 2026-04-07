@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-VERSION = "6.1.0"
+VERSION = "6.2.0"
 
 from nsfw_scanner import db as database
 from nsfw_scanner import auth, stats
