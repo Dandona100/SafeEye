@@ -197,16 +197,11 @@ async def _scan_image_parallel(file_path: str) -> AggregatedResult:
         return_exceptions=True,
     )
 
-    # Handle exceptions from gather
-    clean_results = []
-    for i, r in enumerate(results):
-        if isinstance(r, Exception):
-            clean_results.append(ProviderResult(
-                provider=providers[i].name, is_nsfw=False,
-                error=True, labels=[f"error:{r}"],
-            ))
-        else:
-            clean_results.append(r)
+    clean_results = [
+        ProviderResult(provider=providers[i].name, is_nsfw=False, error=True, labels=[f"error:{r}"])
+        if isinstance(r, Exception) else r
+        for i, r in enumerate(results)
+    ]
 
     elapsed = (time.monotonic() - start) * 1000
     agg = _aggregate(clean_results)

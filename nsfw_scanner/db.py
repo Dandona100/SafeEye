@@ -407,16 +407,11 @@ async def export_hash_metadata() -> list[dict]:
             "SELECT phash, is_nsfw, confidence, labels FROM scan_history "
             "WHERE phash IS NOT NULL ORDER BY timestamp DESC LIMIT 10000"
         )
-        results = []
-        for row in rows:
-            r = dict(row)
-            results.append({
-                "p": r["phash"],
-                "n": r["is_nsfw"],
-                "c": round(r["confidence"], 2),
-                "l": json.loads(r["labels"]) if r["labels"] else [],
-            })
-        return results
+        return [
+            {"p": (r := dict(row))["phash"], "n": r["is_nsfw"],
+             "c": round(r["confidence"], 2), "l": json.loads(r["labels"]) if r["labels"] else []}
+            for row in rows
+        ]
     finally:
         await db.close()
 
@@ -603,21 +598,11 @@ async def update_webhook_status(webhook_id: int, status: str, attempts: int = No
     """Update a webhook queue entry's status, attempt count, and next retry time."""
     db = await get_db()
     try:
-        if attempts is not None and next_retry is not None:
-            await db.execute(
-                "UPDATE webhook_queue SET status=?, attempts=?, next_retry=? WHERE id=?",
-                (status, attempts, next_retry, webhook_id),
-            )
-        elif attempts is not None:
-            await db.execute(
-                "UPDATE webhook_queue SET status=?, attempts=? WHERE id=?",
-                (status, attempts, webhook_id),
-            )
-        else:
-            await db.execute(
-                "UPDATE webhook_queue SET status=? WHERE id=?",
-                (status, webhook_id),
-            )
+        sets, params = ["status=?"], [status]
+        if attempts is not None: sets.append("attempts=?"); params.append(attempts)
+        if next_retry is not None: sets.append("next_retry=?"); params.append(next_retry)
+        params.append(webhook_id)
+        await db.execute(f"UPDATE webhook_queue SET {', '.join(sets)} WHERE id=?", tuple(params))
         await db.commit()
     finally:
         await db.close()

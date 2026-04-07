@@ -288,16 +288,11 @@ async def get_history(limit: int = 50, offset: int = 0, nsfw_only: bool = False,
         )
         return [
             HistoryItem(
-                scan_id=dict(r)["id"],
-                timestamp=dict(r)["timestamp"],
-                file_type=dict(r).get("file_type"),
-                is_nsfw=bool(dict(r)["is_nsfw"]),
-                borderline=bool(dict(r).get("borderline", 0)),
-                confidence=dict(r).get("confidence", 0),
-                labels=json.loads(dict(r).get("labels", "[]")),
-                duration_ms=dict(r).get("total_duration_ms", 0),
-                providers_agree=dict(r).get("providers_agree", 0),
-                providers_total=dict(r).get("providers_total", 0),
+                scan_id=(d := dict(r))["id"], timestamp=d["timestamp"],
+                file_type=d.get("file_type"), is_nsfw=bool(d["is_nsfw"]),
+                borderline=bool(d.get("borderline", 0)), confidence=d.get("confidence", 0),
+                labels=json.loads(d.get("labels", "[]")), duration_ms=d.get("total_duration_ms", 0),
+                providers_agree=d.get("providers_agree", 0), providers_total=d.get("providers_total", 0),
             )
             for r in rows
         ]
