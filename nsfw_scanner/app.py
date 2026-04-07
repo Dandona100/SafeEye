@@ -100,6 +100,14 @@ async def _post_scan(result, file_type: str, token_name: str = None):
         ))
 
 
+def _ext_from_content_type(ct: str) -> str:
+    """Map Content-Type to file extension."""
+    if "png" in ct: return ".png"
+    if "webp" in ct: return ".webp"
+    if "video" in ct or "mp4" in ct: return ".mp4"
+    return ".jpg"
+
+
 # ========== File size limit ==========
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
 
@@ -108,15 +116,13 @@ _rate_limits: dict = {}  # token_hash -> (count, window_start)
 RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "30"))
 
 def check_rate_limit(token_name: str):
-    import time
-    now = time.time()
+    now = _time_mod.time()
     key = token_name or "anon"
     count, start = _rate_limits.get(key, (0, now))
     if now - start > 60:
         _rate_limits[key] = (1, now)
         return
     if count >= RATE_LIMIT_PER_MINUTE:
-        from fastapi import HTTPException
         raise HTTPException(429, f"Rate limit exceeded ({RATE_LIMIT_PER_MINUTE}/min). Try again later.")
     _rate_limits[key] = (count + 1, start)
 
@@ -139,8 +145,7 @@ async def _check_phash_cache(file_path: str) -> dict | None:
     similar = await database.find_similar_by_phash(phash, threshold=0, limit=1)
     if similar:
         logger.info(f"Cache hit for pHash {phash}")
-        cached = similar[0]
-        return cached
+        return similar[0]
     return None
 
 
@@ -298,8 +303,7 @@ async def lifespan(app: FastAPI):
 
     # Restore saved provider credentials from DB
     saved_config = await database.load_all_provider_config()
-    for key, value in saved_config.items():
-        os.environ[key] = value
+    os.environ.update(saved_config)
     if saved_config:
         logger.info(f"Restored {len(saved_config)} provider config keys from DB")
 
@@ -571,13 +575,7 @@ async def scan_url_endpoint(
                 f"URL is not an image or video (Content-Type: {content_type}). "
                 "No og:image found. Provide a direct link to a media file.")
 
-    ext = ".jpg"
-    if "png" in content_type:
-        ext = ".png"
-    elif "webp" in content_type:
-        ext = ".webp"
-    elif "video" in content_type or "mp4" in content_type:
-        ext = ".mp4"
+    ext = _ext_from_content_type(content_type)
 
     tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=ext, delete=False)
     try:
@@ -762,13 +760,7 @@ async def _download_to_tmp(url: str, label: str) -> str:
 
     _check_file_size(content)
 
-    ext = ".jpg"
-    if "png" in content_type:
-        ext = ".png"
-    elif "webp" in content_type:
-        ext = ".webp"
-    elif "video" in content_type or "mp4" in content_type:
-        ext = ".mp4"
+    ext = _ext_from_content_type(content_type)
 
     tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=ext, delete=False)
     tmp.write(content)
@@ -948,9 +940,7 @@ async def scan_async(
         except _aio.ClientError as e:
             raise HTTPException(400, str(e))
 
-        ext = ".jpg"
-        if "png" in ct: ext = ".png"
-        elif "video" in ct: ext = ".mp4"
+        ext = _ext_from_content_type(ct)
         tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=ext, delete=False)
         tmp.write(content)
         tmp.close()
@@ -1007,9 +997,7 @@ async def scan_batch(
             await database.update_job(job_id, "failed", error=str(e))
             continue
 
-        ext = ".jpg"
-        if "png" in ct: ext = ".png"
-        elif "video" in ct: ext = ".mp4"
+        ext = _ext_from_content_type(ct)
         tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=ext, delete=False)
         tmp.write(content)
         tmp.close()
@@ -1994,9 +1982,6 @@ async def create_sandbox_token(authorization: str = Header(None)):
     return {"token": raw, "note": "Sandbox token — scans work but results are not saved"}
 
 
-async def _is_sandbox_token(token_hash: str) -> bool:
-    saved = await database.load_all_provider_config()
-    return saved.get(f"SANDBOX_{token_hash}") == "true"
 
 
 @app.post("/api/v1/sandbox/scan")
@@ -2430,10 +2415,7 @@ async def demo_scan(
                     f"URL is not an image or video (Content-Type: {ct}). "
                     "No og:image found. Provide a direct link to a media file.")
 
-        ext = ".jpg"
-        if "png" in ct: ext = ".png"
-        elif "webp" in ct: ext = ".webp"
-        elif "video" in ct or "mp4" in ct: ext = ".mp4"
+        ext = _ext_from_content_type(ct)
 
         tmp = tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=ext, delete=False)
         tmp.write(content)
