@@ -1503,18 +1503,18 @@ function IntegrationsTab({ api, i18n }) {
     const [installing, setInstalling] = useState('');
     const installProvider = async (key) => {
         setInstalling(key);
-        setMsg(i18n.lang === 'he' ? '⏳ מתקין...' : '⏳ Installing...');
+        setMsg(i18n.lang === 'he' ? `⏳ מתקין ${key}... (עד 5 דקות)` : `⏳ Installing ${key}... (up to 5 min)`);
         try {
             const res = await api.postApi('/api/v1/admin/providers/install', { provider: key });
             if (res.status === 'ok') {
-                setMsg('✅');
+                setMsg(i18n.lang === 'he' ? `✅ ${key} הותקן בהצלחה!` : `✅ ${key} installed successfully!`);
                 reload();
             } else {
-                setMsg(`❌ ${res.output || 'Install failed'}`);
+                setMsg(`❌ ${key}: ${res.output || 'Install failed'}`);
             }
-        } catch (e) { setMsg(`❌ ${e.message}`); }
+        } catch (e) { setMsg(`❌ ${key}: ${e.message}`); }
         setInstalling('');
-        setTimeout(() => setMsg(''), 5000);
+        setTimeout(() => setMsg(''), 8000);
     };
 
     if (!providers) return <div className="text-muted py-8 text-center">{i18n.t('loading')}</div>;
@@ -1552,26 +1552,17 @@ function IntegrationsTab({ api, i18n }) {
                             {def.local ? (
                                 <div>
                                     <p className="text-muted text-sm">{he ? (def.desc_he || 'מודל מקומי') : (def.desc_en || 'Local model')}</p>
-                                    {def.install && !isConnected && (
-                                        <div className="mt-2 space-y-2">
-                                            <button className="btn btn-green w-full" disabled={installing === def.key}
-                                                onClick={() => installProvider(def.key)}>
-                                                {installing === def.key ? (he ? '⏳ מתקין...' : '⏳ Installing...') : (he ? '📦 התקן אוטומטית' : '📦 Auto Install')}
-                                            </button>
-                                            <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 select-all" dir="ltr">{def.install}</div>
-                                        </div>
-                                    )}
-                                    {isConnected && def.install && <p className="text-green-600 text-xs mt-1">{he ? '✅ מותקן ופעיל' : '✅ Installed & active'}</p>}
-                                    {isConnected && !def.install && <p className="text-green-600 text-xs mt-1">{he ? 'פועל מהקופסה' : 'Works out of the box'}</p>}
+                                    {isConnected && <p className="text-green-600 text-xs mt-1">{def.install ? (he ? '✅ מותקן ופעיל' : '✅ Installed & active') : (he ? 'פועל מהקופסה' : 'Works out of the box')}</p>}
                                     {!isConnected && def.install && (
                                         <div className="mt-2 space-y-2">
                                             <button className="btn btn-green w-full" disabled={installing === def.key}
                                                 onClick={() => installProvider(def.key)}>
-                                                {installing === def.key ? (he ? '⏳ מתקין...' : '⏳ Installing...') : (he ? '📦 התקן' : '📦 Install')}
+                                                {installing === def.key ? (he ? '⏳ מתקין... (עד 5 דקות)' : '⏳ Installing... (up to 5 min)') : (he ? '📦 התקן' : '📦 Install')}
                                             </button>
                                             <div className="bg-ink rounded p-2 font-mono text-xs text-gray-300 select-all" dir="ltr">{def.install}</div>
                                         </div>
                                     )}
+                                    {!isConnected && !def.install && <p className="text-amber-600 text-xs mt-1">{he ? '❌ לא זמין' : '❌ Not available'}</p>}
                                 </div>
                             ) : isConnected ? (
                                 <div>
