@@ -262,20 +262,6 @@ async def _update_blocklist():
 
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-DEFAULT_PORT = 1985
-
-
-def find_available_port(preferred: int = DEFAULT_PORT) -> int:
-    """Find an available port, starting from preferred."""
-    import socket
-    for port in [preferred] + list(range(preferred + 1, preferred + 50)):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(("0.0.0.0", port))
-                return port
-        except OSError:
-            continue
-    raise RuntimeError(f"No available port found near {preferred}")
 
 
 @asynccontextmanager
@@ -422,7 +408,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SafeEyes",
     description="AI-powered content safety scanner with multi-provider parallel detection",
-    version="4.0.0",
+    version=VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -450,9 +436,15 @@ async def require_token(authorization: str = Header(None)) -> dict:
     if not authorization:
         raise HTTPException(401, "Missing Authorization header")
     raw = authorization.removeprefix("Bearer ").strip()
-    # Master token has full access to all endpoints
+    # Master token has full access
     if auth.verify_master(raw):
         return {"name": "_master", "token_hash": "master", "priority": 0}
+    # Local/Telegram session tokens — scoped access (not master)
+    if raw in _local_sessions:
+        session = _local_sessions[raw]
+        if _time_mod.time() - session["created"] < 86400:  # 24h expiry
+            return {"name": "_session", "token_hash": "session", "priority": 0}
+        del _local_sessions[raw]
     token_data = await auth.verify_api_token(raw)
     if not token_data:
         raise HTTPException(401, "Invalid or expired token")
@@ -2268,6 +2260,7 @@ import secrets as _secrets
 import time as _time
 
 _tg_auth_codes: dict[str, dict] = {}  # username -> {code, expires, chat_id}
+_local_sessions: dict[str, dict] = {}  # session_token -> {created, scope}
 
 @app.get("/api/v1/auth/mode")
 async def auth_mode(request: Request):
@@ -2275,9 +2268,10 @@ async def auth_mode(request: Request):
     host = request.headers.get("host", "")
     # Local access: no auth needed
     if any(host.startswith(h) for h in ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")):
-        # Return master token for local access
-        master = os.environ.get("SCAN_API_MASTER_TOKEN", "")
-        return {"mode": "local", "token": master}
+        # Create scoped session token for local access (not the master token)
+        session_token = _secrets.token_urlsafe(24)
+        _local_sessions[session_token] = {"created": _time_mod.time(), "scope": "local"}
+        return {"mode": "local", "token": session_token}
     # Domain access: check if Telegram bot is configured
     saved = await database.load_all_provider_config()
     if saved.get("TELEGRAM_BOT_TOKEN") and saved.get("TELEGRAM_VERIFIED") == "true":
@@ -2365,9 +2359,10 @@ async def telegram_auth_verify(body: dict):
 
     del _tg_auth_codes[username]
 
-    # Return master token for verified Telegram users
-    master = os.environ.get("SCAN_API_MASTER_TOKEN", "")
-    return {"status": "verified", "token": master, "username": username}
+    # Return scoped session token (not master)
+    session_token = _secrets.token_urlsafe(24)
+    _local_sessions[session_token] = {"created": _time_mod.time(), "scope": "telegram", "username": username}
+    return {"status": "verified", "token": session_token, "username": username}
 
 
 # ========== Hash Metadata (client-side pre-scan) ==========
@@ -2416,8 +2411,9 @@ async def subscribe_metadata(body: dict, _=Depends(require_master)):
 
 
 @app.get("/api/v1/metadata/check/{phash}")
-async def check_hash(phash: str):
-    """Quick check: does this pHash exist in our database? No auth needed."""
+async def check_hash(phash: str, authorization: str = Header(None)):
+    """Quick check: does this pHash exist in our database?"""
+    await require_token(authorization)
     similar = await database.find_similar_by_phash(phash, threshold=3, limit=1)
     if similar:
         hit = similar[0]
@@ -2563,8 +2559,19 @@ async def deploy_status(authorization: str = Header(None)):
 
 
 @app.post("/api/v1/webhook/github")
-async def github_webhook(body: dict):
-    """GitHub webhook — auto-deploy on push to main."""
+async def github_webhook(request: Request):
+    """GitHub webhook — auto-deploy on push to main. HMAC verified."""
+    import hmac as _hmac
+    webhook_secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    if webhook_secret:
+        sig = request.headers.get("x-hub-signature-256", "")
+        body_bytes = await request.body()
+        expected = "sha256=" + _hmac.new(webhook_secret.encode(), body_bytes, "sha256").hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            raise HTTPException(403, "Invalid webhook signature")
+        body = _json.loads(body_bytes)
+    else:
+        body = await request.json()
     if body.get("ref") != "refs/heads/main":
         return {"status": "ignored"}
     import threading
