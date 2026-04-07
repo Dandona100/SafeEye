@@ -1456,7 +1456,11 @@ async def install_provider(body: dict, authorization: str = Header(None)):
         )
         if result.returncode != 0:
             return {"status": "error", "output": result.stderr[-500:]}
-        # Force re-check of providers
+        # Force re-check of providers — clear failed import cache
+        import sys as _sys
+        for mod_name in list(_sys.modules.keys()):
+            if any(pkg in mod_name for pkg in packages.split()):
+                del _sys.modules[mod_name]
         from nsfw_scanner import scanner
         scanner._providers = None
         return {"status": "ok", "provider": name, "output": result.stdout[-200:],
